@@ -6,3 +6,12 @@ venv/
 ENV/
 .env
 .DS_Store
+
+# Multi-lane custom ignores
+python-fastapi/venv/
+python-fastapi/.venv/
+node-express/node_modules/
+node-express/npm-debug.log*
+node-express/yarn-error.log*
+.DS_Store
+Thumbs.db
