@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Response
 import uvicorn
 
 app = FastAPI()
@@ -40,6 +40,37 @@ async def title_accept(title:dict):
             lista[f"task{tsk_qnt}"] = {"id": tsk_qnt, "title":x[1],"done":"false"}
             return list(lista.items())[-1]
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title is missing from body or empty")
+
+@app.put("/tasks/{id}",status_code=200)
+async def update_accept(update:dict,id:str):
+    try:
+        for x in lista.values():
+            if x["id"] == id:
+                if "title" in update:
+                    if update["title"].strip() != "":
+                        x["title"] = update["title"]
+                    else:
+                        raise KeyError
+                if "done" in update:
+                    if update["done"].strip() != "":
+                        x["done"] = update["done"]
+                    else: raise KeyError
+                return x
+    except KeyError: raise HTTPException(status_code=404, detail="Invalid payload")
+    raise HTTPException(status_code=404, detail="Invalid payload")
+
+@app.delete("/tasks/{id}",status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tsk(id:str):
+    for x in lista.values():
+        if x["id"] == id:
+            del lista[f"task{id}"]
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+    raise HTTPException(status_code=404,detail="Missing id")
+
+
+
+
+    
             
 
             
