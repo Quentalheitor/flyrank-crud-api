@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 import uvicorn
 
 app = FastAPI()
@@ -12,13 +12,13 @@ def hello():
     }
 
 @app.get("/health")
-def status():
+def hstatus():
     return {"status": "ok"}
 
 lista = {
-    "task1": {"id": "01", "title": "title1", "done": "done1"},
-    "task2": {"id": "02", "title": "title2", "done": "done2"},
-    "task3": {"id": "03", "title": "title3", "done": "done3"}
+    "task1": {"id": "1", "title": "title1", "done": "false"},
+    "task2": {"id": "2", "title": "title2", "done": "false"},
+    "task3": {"id": "3", "title": "title3", "done": "false"}
 }
 
 @app.get("/tasks")
@@ -31,6 +31,20 @@ def get_single_tsk(id: str):
         if task["id"] == id:
             return task
     raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+
+@app.post("/tasks",status_code=status.HTTP_201_CREATED)
+async def title_accept(title:dict):
+    for x in title.items():
+        if x[0] == "title" and x[1].strip() != "":
+            tsk_qnt = str(int((next(reversed(lista))[-1]))+1)
+            lista[f"task{tsk_qnt}"] = {"id": tsk_qnt, "title":x[1],"done":"false"}
+            return list(lista.items())[-1]
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title is missing from body or empty")
+            
+
+            
+            
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
