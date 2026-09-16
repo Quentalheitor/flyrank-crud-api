@@ -95,9 +95,39 @@ flyrank-crud-api/
 │   ├── index.js
 │   ├── package-lock.json
 │   └── package.json
-└── python-fastapi/        # Primary track (FastAPI)
-    ├── Screenshots/
-    │   └── Step_5_sc.png
-    ├── main.py
-    └── requirements.txt
+├── python-fastapi/        # Primary track (FastAPI)
+│   ├── Screenshots/
+│   │   └── Step_5_sc.png
+│   ├── main.py
+│   └── requirements.txt
+└── ai-version/            # Stage 7: AI-generated implementation
+    └── main.py
 ```
+
+---
+
+## AI vs Me
+
+### My Prompt
+
+> Acting as a backend engineer, I need you to build a basic CRUD API using uvicorn, FastAPI, and Python 3. The API interacts with tasks which are composed of an id, title, and "done" boolean status. It has to have the following endpoints: "/" with a hello method which returns the API name, version, and a list of all endpoints; "/health" which shows the status of the server with a simple message; "/tasks" which has a GET method that lists all the tasks in the in-memory list, and a POST method which adds a new task through a JSON body containing a "title" key with a non-empty value; "/tasks/{id}" which has a GET method which returns the task with the matching id from the endpoint, a PUT method which changes the title and/or the done status of a task that matches the id from the endpoint through a JSON body, and finally a DELETE method which removes the task from the list with the matching id from the endpoint. All of the endpoints also have to be able to handle errors and output the correct status code for the situation.
+
+---
+
+### What did the AI do better — and do I understand its version well enough to explain it?
+
+The AI used Pydantic `BaseModel` schemas (`TaskCreate`, `TaskUpdate`, `Task`) with typed fields and `@field_validator` decorators instead of raw `dict` parameters. This is the correct FastAPI pattern — FastAPI uses these models to auto-generate the request/response documentation in Swagger UI and to reject malformed input before it even reaches the route handler. It also replaced the dictionary of string-keyed task dicts with a `dict[int, Task]` keyed by integer IDs, making lookups a simple `tasks_db.get(task_id)` instead of a `for` loop scanning every value. Both improvements are legitimate and I can explain them, they are standard FastAPI practice.
+
+### What did the AI get wrong or quietly ignore from my prompt?
+
+Two concrete gaps. First, the AI started with an **empty in-memory store** (`tasks_db = {}`), so `GET /tasks` on a fresh server returns an empty list, the assignment explicitly requires 3 pre-seeded example tasks. Second, the AI used **integer IDs** (`id: int`) while my hand-built version used string IDs (`"id": "1"`); beyond the type mismatch, the AI's `DELETE` endpoint also failed to return a proper `404` when a non-existent ID was requested on the first generation.
+
+### What did my prompt forget to specify — and what did the AI silently decide for you?
+
+At least three things were left unspecified. First, whether the list should be **pre-seeded** — the AI defaulted to empty. Second, the **ID type** — integer vs string — which the AI chose on its own. Third, whether `PUT` should reject a payload that contains **neither** `title` nor `done` — the AI added that validation rule without being asked. It also silently added a `"message"` field to the `/health` response and made the root `/` return a richer JSON structure, both unrequested.
+
+---
+
+### The Rematch
+
+After adding explicit requirements for 3 pre-seeded tasks, integer IDs starting at 1, and exact status codes per endpoint to the prompt, the regenerated version started the server with the correct seed data, used consistent integer IDs throughout, and matched the hand-built status code behaviour across all endpoints.
