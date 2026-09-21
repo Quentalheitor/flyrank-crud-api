@@ -1,7 +1,38 @@
 from fastapi import FastAPI, HTTPException, status, Response
+from contextlib import asynccontextmanager
+from typing import Optional
+from sqlmodel import Field, SQLModel, Session, create_engine, select
 import uvicorn
 
-app = FastAPI(title="Base CRUD",version="1.0")
+class Task(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    done: bool
+
+sqlite_file_name = "Task.db"
+sqlite_url = f"sqlite:///{sqlite_file_name}"
+connect_args = {"check_same_thread": False}
+engine = create_engine(sqlite_url, connect_args=connect_args)
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        existing_task = session.exec(select(Task)).first()
+        if not existing_task:
+            session.add_all([
+                    Task(title="title1",done= False),
+                    Task(title="title2",done=False),
+                    Task(title="title3",done=False)
+            ])
+            session.commit()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 def hello():
@@ -74,15 +105,6 @@ async def delete_tsk(id:str):
             del lista[f"task{id}"]
             return Response(status_code=status.HTTP_204_NO_CONTENT)
     raise HTTPException(status_code=404,detail="Missing id")
-
-
-
-
-    
-            
-
-            
-            
 
 
 if __name__ == "__main__":
