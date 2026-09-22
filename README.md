@@ -215,6 +215,45 @@ content-type: application/json
 
 ---
 
+---
+
+## Week 3 — Assignment A3: Containerized Postgres
+
+### Stage 0 — A Real Database in One Command
+
+Docker Desktop installed and confirmed:
+
+```bash
+docker --version
+```
+
+Postgres container started with a named volume for persistence:
+
+```bash
+ docker run --name flyrank-postgres -e POSTGRES_PASSWORD=280507Bia -e POSTGRES_DB=task_crud -p 5432:5432 -v flyrank-postgres-data:/var/lib/postgresql/data -d postgres
+
+```
+
+Verified the container is running and the SQL prompt is accessible:
+
+```bash
+docker ps
+docker exec -it flyrank-postgres psql -U postgres -d task_crud
+```
+SQL prompt output:
+
+```sql
+psql (18.6 (Debian 18.6-1.pgdg13+2))
+Type "help" for help.
+
+task_crud=# SELECT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+```
+
 ## Repository Structure
 
 ```text

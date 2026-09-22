@@ -1,11 +1,18 @@
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+jython/
+pypy/
+
+# Package Caches and Compiled Bytecode
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
-venv/
-ENV/
-.env
-.DS_Store
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Multi-lane custom ignores
 python-fastapi/venv/
@@ -16,3 +23,4 @@ node-express/yarn-error.log*
 .DS_Store
 Thumbs.db
 Task.db
+.env
