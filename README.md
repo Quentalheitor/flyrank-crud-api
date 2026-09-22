@@ -115,9 +115,11 @@ After adding explicit requirements for 3 pre-seeded tasks, integer IDs starting 
 
 ### Why SQLite?
 
-* **Zero Configuration & Serverless:** SQLite runs as an embedded library rather than an external server process. The entire database is contained within a single file (`tasks.db`).
-* **True Persistence:** Tasks, status changes, and newly created records are written directly to disk, ensuring that all data persists across server restarts.
-* **Automatic Provisioning:** The database file and table schema are automatically initialized on server startup if they do not exist.
+* **Native to Python — No Installation Required:** SQLite ships as part of Python's standard library via the built-in `sqlite3` module. No separate database server, driver installation, or system-level dependency is needed — it works out of the box in any standard Python environment.
+* **Single-File Database:** The entire database — schema, data, and indexes — is stored in a single file on disk (`tasks.db`). This makes the project trivially portable: copying or deleting the file is all it takes to move or reset the database.
+* **Zero Configuration:** There is no server process to start, no port to open, no credentials to configure, and no connection string beyond a local file path. The engine initializes itself on first run and is ready immediately.
+* **True Persistence:** Tasks, status changes, and newly created records are written directly to disk, ensuring that all data survives server restarts — the core limitation addressed in this migration from A1.
+* **Automatic Provisioning:** The database file and table schema are automatically initialized on server startup if they do not already exist.
 * **Clean Cloning:** `tasks.db` is included in `.gitignore`, allowing fresh clones of the repository to start from a clean baseline and execute the idempotent seeding logic on initial run.
 
 ---
@@ -180,15 +182,17 @@ In Week 2 (Assignment A1), records lived in process memory and vanished whenever
 
 ### Stage 4: Manual SQL Exploration
 
-Direct database inspection was performed using a GUI database viewer (DBeaver) connected to the local SQLite database file:
+Direct database inspection was performed using DBeaver 26.2.0 connected to the local SQLite database file (`Task.db`):
+
+![DBeaver SQL Exploration](python-fastapi/Screenshots/Step_4_A2_sc.png)
 
 #### Example Query Executed
 
 ```sql
-SELECT * FROM task;
+SELECT * FROM task t;
 ```
 
-* **Execution Outcome:** Fetched all 3 initial task rows (`id`: 1, 2, 3; `title`: "title1", "title2", "title3"; `done`: 0) directly from disk in 0.001 seconds.
+* **Execution Outcome:** Fetched all 3 initial task rows (`id`: 1, 2, 3; `title`: "title1", "title2", "title3"; `done`: 0) directly from disk in 0.002 seconds.
 * **Observation:** Data altered directly via SQL statements (e.g., `UPDATE task SET done = 1 WHERE id = 1;`) is reflected immediately on subsequent API `GET /tasks` requests without requiring a server reboot, proving that the SQLite database file serves as the single source of truth.
 
 ---
@@ -211,30 +215,6 @@ content-type: application/json
 
 ---
 
-### AI vs Me — Assignment A2
-
-#### My Prompt
-
-> Acting as a backend engineer, migrate my FastAPI task CRUD API from an in-memory list to a persistent SQLite database using SQLModel or raw sqlite3. The API interacts with tasks containing an integer primary key `id`, text `title`, and boolean `done` (default false). The database file must be named `tasks.db` and created automatically if missing. Ensure the tasks table is created automatically, and seed three initial tasks only if the table is empty so data does not multiply on server restarts. Preserve all five endpoints (`GET /tasks`, `GET /tasks/{id}`, `POST /tasks`, `PUT /tasks/{id}`, `DELETE /tasks/{id}`) with the exact same request/response contracts, validation rules (400 on empty title, 404 on unknown ID), and status codes (200, 201, 204, 400, 404). All database operations must use parameterized queries.
-
-#### What did the AI do better — and do I understand its version well enough to explain it?
-
-The AI implementation properly structured database sessions using FastAPI's dependency injection (`Depends(get_session)`), wrapping session management inside generator contexts. This cleanly handles opening, committing, and closing connections per request, avoiding open connection leaks during unexpected exceptions.
-
-#### What did the AI get wrong or quietly ignore from my prompt?
-
-On initial generation, the AI attempted to create tables on every startup without verifying if seed rows already existed, which resulted in duplicate sample tasks being appended on each restart until explicit check logic (`select(Task).first()`) was introduced. Additionally, the AI initially attempted to return a JSON body on the `DELETE /tasks/{id}` route instead of an empty body with status `204 No Content`.
-
-#### What did my prompt forget to specify — and what did the AI silently decide for you?
-
-The prompt did not specify how SQLite's multithreading flag should be handled. By default, SQLite checks threads strictly; the AI silently added `connect_args={"check_same_thread": False}` to the engine setup, which is necessary for FastAPI's asynchronous threadpool workers. It also decided the exact schema table name (`task` vs `tasks`) based on SQLModel class name conventions.
-
-#### The Rematch
-
-Refining the prompt to explicitly require FastAPI's `lifespan` event handler, an explicit table name `__tablename__ = "tasks"`, an idempotent count check prior to seeding, and an empty 204 response for deletions produced a clean, single-file implementation matching the manual solution.
-
----
-
 ## Repository Structure
 
 ```text
@@ -247,6 +227,7 @@ flyrank-crud-api/
 │   └── package.json
 ├── python-fastapi/        # Primary track (FastAPI + SQLModel)
 │   ├── Screenshots/
+│   │   ├── Step_4_A2_sc.png
 │   │   └── Step_5_sc.png
 │   ├── main.py
 │   └── requirements.txt
