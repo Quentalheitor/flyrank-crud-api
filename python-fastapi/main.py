@@ -88,32 +88,39 @@ async def title_accept(title: str):
         
 
 @app.put("/tasks/{id}",status_code=200)
-async def update_accept(update:dict,id:str):
+async def update_accept(update:dict,id:int):
     """Changes the title and/or the done status of a task that matches the id from the endpoint, it does this through a JSON body"""
-    try:
-        for x in lista.values():
-            if x["id"] == id:
-                if "title" in update:
-                    if update["title"].strip() != "":
-                        x["title"] = update["title"]
-                    else:
-                        raise KeyError
-                if "done" in update:
-                    if isinstance(update["done"], bool):
-                        x["done"] = update["done"]
-                    else: raise KeyError
-                return x
-    except KeyError: raise HTTPException(status_code=400, detail="Invalid payload")
-    raise HTTPException(status_code=404, detail="ID not found")
+    tsk_upd = {}
+    if "title" in update and isinstance(update["title"],str) and update["title"].strip() != "":
+        tsk_upd['title'] = update['title']
+    if "done" in update and isinstance(update["done"], bool):
+        tsk_upd["done"] = update["done"]
+    if len(tsk_upd) <=0:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    with Session(engine) as session:
+        query = session.exec(select(Task).where(Task.id==id)).first()
+        if query is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        if "title" in tsk_upd:
+            query.title = tsk_upd["title"]
+        if "done" in tsk_upd:
+            query.done = tsk_upd['done']
+        session.add(query)
+        session.commit()
+        session.refresh(query)
+        return query
 
 @app.delete("/tasks/{id}",status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tsk(id:str):
     """Deletes the task that matches the id from the endpoint"""
-    for x in lista.values():
-        if x["id"] == id:
-            del lista[f"task{id}"]
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
-    raise HTTPException(status_code=404,detail="Missing id")
+    with Session(engine) as session:
+        query = session.exec(select(Task).where(Task.id==id)).first()
+        if query is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        session.delete(query)
+        session.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        
 
 
 if __name__ == "__main__":
