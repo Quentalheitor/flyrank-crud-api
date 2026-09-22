@@ -74,15 +74,18 @@ async def get_single_tsk(id: int):
             return ided_task
 
 @app.post("/tasks",status_code=status.HTTP_201_CREATED)
-async def title_accept(title:dict):
+async def title_accept(title: str):
     """Adds a new task through the acceptance of json bodies that contain a "title" keyword and a non-empty value"""
-    for x in title.items():
-        if x[0] == "title" and x[1].strip() != "":
-            tsk_qnt = str(int((next(reversed(lista))[-1]))+1)
-            ntask = {"id": tsk_qnt, "title":x[1],"done":False}
-            lista[f"task{tsk_qnt}"] = ntask            
-            return ntask
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title is missing from body or empty")
+    if title is None or title.strip() == "":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Title name field empty")
+    with Session(engine) as session:
+        new_tsk = Task(title=title,done=False)
+        new_tsk.id = None
+        session.add(new_tsk)
+        session.commit()
+        session.refresh(new_tsk)
+        return new_tsk
+        
 
 @app.put("/tasks/{id}",status_code=200)
 async def update_accept(update:dict,id:str):
