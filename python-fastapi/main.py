@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 from sqlmodel import Field, SQLModel, Session, create_engine, select
 import uvicorn
+import json
 
 class Task(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -54,18 +55,23 @@ lista = {
     "task3": {"id": "3", "title": "title3", "done": False}
 }
 
-@app.get("/tasks")
+@app.get("/tasks", response_model=list[Task])
 def tasklist():
-    """Returns the current in-memory list of tasks """
-    return lista
+    with Session(engine) as session:
+        query = select(Task)
+        tasks = session.exec(query).all()
+        return tasks
 
 @app.get("/tasks/{id}")
-def get_single_tsk(id: str):
+async def get_single_tsk(id: int):
     """Returns a task from the list that matches the id inserted in the endpoint"""
-    for task in lista.values():
-        if task["id"] == id:
-            return task
-    raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    with Session(engine) as session:
+        query = select(Task).where(Task.id == id)
+        ided_task = session.exec(query).first()
+        if ided_task is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        else: 
+            return ided_task
 
 @app.post("/tasks",status_code=status.HTTP_201_CREATED)
 async def title_accept(title:dict):
