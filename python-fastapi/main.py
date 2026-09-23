@@ -1,95 +1,51 @@
 from fastapi import FastAPI, HTTPException, status, Response
 from contextlib import asynccontextmanager
-from typing import Optional
-from sqlmodel import Field, SQLModel, Session, create_engine, select
 import uvicorn
-import json
+import db
 
-class Task(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    done: bool
 
-sqlite_file_name = "Task.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
-connect_args = {"check_same_thread": False}
-engine = create_engine(sqlite_url, connect_args=connect_args)
 
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        existing_task = session.exec(select(Task)).first()
-        if not existing_task:
-            session.add_all([
-                    Task(title="title1",done= False),
-                    Task(title="title2",done=False),
-                    Task(title="title3",done=False)
-            ])
-            session.commit()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_db_and_tables()
+    db.create_db_and_tables()
     yield
 
 
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
-def hello():
-    """Returns the aplication name, its version, and a list of its endpoints"""
-    return {
-        "name": "Base CRUD",
-        "version": "1.0",
-        "endpoints": ["/tasks", "/health","/tasks/{id}"]
-    }
+def hero_route():
+    return db.hello()
 
 @app.get("/health")
-def hstatus():
-    """Returns server status"""
-    return {"status": "ok"}
+def status_route():
+    return db.hstatus()
 
-lista = {
-    "task1": {"id": "1", "title": "title1", "done": False},
-    "task2": {"id": "2", "title": "title2", "done": False},
-    "task3": {"id": "3", "title": "title3", "done": False}
-}
 
-@app.get("/tasks", response_model=list[Task])
-def tasklist():
-    with Session(engine) as session:
-        query = select(Task)
-        tasks = session.exec(query).all()
-        return tasks
+@app.get("/tasks", response_model=list[db.Task])
+async def task_listing():
+    return db.tasklist()
+
 
 @app.get("/tasks/{id}")
-async def get_single_tsk(id: int):
-    """Returns a task from the list that matches the id inserted in the endpoint"""
-    with Session(engine) as session:
-        query = select(Task).where(Task.id == id)
-        ided_task = session.exec(query).first()
-        if ided_task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-        else: 
-            return ided_task
+async def get_task_by_id(id: int):
+    result = db.get_single_tsk(id=id)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    else:
+        return result
 
 @app.post("/tasks",status_code=status.HTTP_201_CREATED)
-async def title_accept(title: str):
-    """Adds a new task through the acceptance of json bodies that contain a "title" keyword and a non-empty value"""
-    if title is None or title.strip() == "":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Title name field empty")
-    with Session(engine) as session:
-        new_tsk = Task(title=title,done=False)
-        new_tsk.id = None
-        session.add(new_tsk)
-        session.commit()
-        session.refresh(new_tsk)
-        return new_tsk
+async def add_task_by_title(title:str):
+    if isinstance(title,str) and title.strip() != "":
+        return db.title_accept(title=title)
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Title name field empty or wrong type")
         
 
 @app.put("/tasks/{id}",status_code=200)
-async def update_accept(update:dict,id:int):
-    """Changes the title and/or the done status of a task that matches the id from the endpoint, it does this through a JSON body"""
+async def update_tsk(update:dict,id:int):
     tsk_upd = {}
     if "title" in update and isinstance(update["title"],str) and update["title"].strip() != "":
         tsk_upd['title'] = update['title']
@@ -97,31 +53,21 @@ async def update_accept(update:dict,id:int):
         tsk_upd["done"] = update["done"]
     if len(tsk_upd) <=0:
         raise HTTPException(status_code=400, detail="Invalid payload")
-    with Session(engine) as session:
-        query = session.exec(select(Task).where(Task.id==id)).first()
-        if query is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-        if "title" in tsk_upd:
-            query.title = tsk_upd["title"]
-        if "done" in tsk_upd:
-            query.done = tsk_upd['done']
-        session.add(query)
-        session.commit()
-        session.refresh(query)
-        return query
+    result = db.update_accept(tsk_upd=tsk_upd,id=id)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    else:
+        return result
+
+
 
 @app.delete("/tasks/{id}",status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tsk(id:str):
-    """Deletes the task that matches the id from the endpoint"""
-    with Session(engine) as session:
-        query = session.exec(select(Task).where(Task.id==id)).first()
-        if query is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-        session.delete(query)
-        session.commit()
+async def delete_route(id:int):
+    result =  db.delete_tsk(id=id)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    elif result == True:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-        
-
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
