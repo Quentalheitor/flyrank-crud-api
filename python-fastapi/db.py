@@ -7,7 +7,7 @@ load_dotenv()
 
 
 postgres_url = os.getenv("DATABASE_URL")
-print(postgres_url)
+
 
 
 class Task(SQLModel, table=True):
@@ -16,10 +16,6 @@ class Task(SQLModel, table=True):
     done: bool
 
 
-
-sqlite_file_name = "Task.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
-connect_args = {"check_same_thread": False}
 engine = create_engine(postgres_url)
 
 def create_db_and_tables():

@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, status, Response
 from contextlib import asynccontextmanager
 import uvicorn
 import db
+from fastapi.responses import JSONResponse
+
 
 
 
@@ -32,7 +34,7 @@ async def task_listing():
 async def get_task_by_id(id: int):
     result = db.get_single_tsk(id=id)
     if result is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={'error':'Task not found'})
     else:
         return result
 
@@ -41,7 +43,8 @@ async def add_task_by_title(title:str):
     if isinstance(title,str) and title.strip() != "":
         return db.title_accept(title=title)
     else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Title name field empty or wrong type")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={'error':'Task not found'})
+        
         
 
 @app.put("/tasks/{id}",status_code=200)
@@ -55,7 +58,7 @@ async def update_tsk(update:dict,id:int):
         raise HTTPException(status_code=400, detail="Invalid payload")
     result = db.update_accept(tsk_upd=tsk_upd,id=id)
     if result is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={'error':'Task not found'})
     else:
         return result
 
@@ -65,7 +68,7 @@ async def update_tsk(update:dict,id:int):
 async def delete_route(id:int):
     result =  db.delete_tsk(id=id)
     if result is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={'error':'Task not found'})
     elif result == True:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
