@@ -1,0 +1,17 @@
+# Ignora arquivos de credenciais e ambiente locais
+.env
+.env.local
+
+# Ignora pastas de ambiente virtual do Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Ignora arquivos do Git se houver
+.git
+.gitignore
+
+Screenshots/
+Task.db
