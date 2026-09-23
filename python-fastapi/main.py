@@ -18,7 +18,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 def hero_route():
-    return db.hello()
+    return {"message": "FlyRank Auth API running", "version": "1.0"}
 
 @app.get("/health")
 def status_route():

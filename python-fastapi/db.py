@@ -2,11 +2,14 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 from sqlmodel import Field, Session, SQLModel, create_engine, select
+from supabase import Client,create_client
 
 load_dotenv()
 
 
 postgres_url = os.getenv("DATABASE_URL")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 
 
@@ -14,6 +17,10 @@ class Task(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     done: bool
+
+def get_supabase() -> Client:
+    supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return supabase_client
 
 
 engine = create_engine(postgres_url)
