@@ -3,7 +3,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from supabase import Client,create_client,AuthApiError
-from gotrue.types import AuthResponse
+from gotrue.types import AuthResponse,UserResponse
 
 load_dotenv(override=True)
 
@@ -109,7 +109,7 @@ def signupsupa(body:dict):
             result = supabase_client.auth.sign_up(body)
             return {'message':'user created succesfully', 'user': result.user.model_dump()}
         except Exception as e:
-            return {'Error':f'{e.message}'}
+            return {'Error':str(e)}
 
 def signinsupa(email:str,password:str):
     
@@ -120,4 +120,15 @@ def signinsupa(email:str,password:str):
     except AuthApiError as e:
         return e
     except Exception as e:
-        return {'Error':f'{e.message}'}
+        return {'Error':str(e)}
+
+def verifytkn(token:str):
+    try:
+        result = supabase_client.auth.get_user(token)
+        return result.user
+    
+    except AuthApiError as e:
+        return e
+    except Exception as e:
+        return {'Error':str(e)}
+    

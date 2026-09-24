@@ -45,12 +45,18 @@ def info_status_msg():
     
 @app.get("/protected/profile")
 async def protected_profile(authorization: Optional[str] = Header(None)):
-    print(authorization)
     if not authorization or len(authorization.split(" ")) != 2 or authorization.split(" ")[0] != "Bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={ "error": "Access token required" })
     else:
         token = authorization.split(" ")[1]
-        return {"message": "Token received", "token": token}
+        result = db.verifytkn(token)
+        print(result)
+        if isinstance(result,db.AuthApiError):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={"error": "Invalid or expired token"})
+        elif isinstance(result,Exception):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=result)
+        else:
+            return JSONResponse(status_code=200,content={"id":result.id,"email":result.email,"account created data":result.user_metadata})
     
 @app.post("/auth/signup",status_code=status.HTTP_201_CREATED)
 async def signup(body: dict):
