@@ -38,6 +38,30 @@ async def get_task_by_id(id: int):
     else:
         return result
 
+@app.post("/auth/signup",status_code=status.HTTP_201_CREATED)
+async def signup(body:dict):
+    result = db.signupsupa(body=body)
+    if result == None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail={'error':"Bad Request"})
+    elif 'Error' in result:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=result)
+    else:
+        return result
+        
+@app.post("/auth/login",status_code=status.HTTP_200_OK)
+async def signin(email:str,password:str):
+    if email.strip() =="" or password.strip() == "":
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail={'error':'Invalid payload'})
+    else:
+        result = db.signinsupa(email=email,password=password)
+        if isinstance(result,db.AuthApiError):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={"Erro":result.message})
+        else:
+            return {"Access token":result.session.access_token,"Refresh token":result.session.refresh_token}
+
+
+            
+
 @app.post("/tasks",status_code=status.HTTP_201_CREATED)
 async def add_task_by_title(title:str):
     if isinstance(title,str) and title.strip() != "":

@@ -2,14 +2,17 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 from sqlmodel import Field, Session, SQLModel, create_engine, select
-from supabase import Client,create_client
+from supabase import Client,create_client,AuthApiError
+from gotrue.types import AuthResponse
 
-load_dotenv()
-
+load_dotenv(override=True)
 
 postgres_url = os.getenv("DATABASE_URL")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+print(f"--> URL ATUAL DO SUPABASE: {SUPABASE_URL}")
+supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 
 
 
@@ -19,7 +22,6 @@ class Task(SQLModel, table=True):
     done: bool
 
 def get_supabase() -> Client:
-    supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
     return supabase_client
 
 
@@ -98,3 +100,24 @@ def delete_tsk(id:int):
         session.delete(query)
         session.commit()
         return True
+
+def signupsupa(body:dict):
+    if 'email' not in body or 'password' not in body:
+        return None
+    else:
+        try:
+            result = supabase_client.auth.sign_up(body)
+            return {'message':'user created succesfully', 'user': result.user.model_dump()}
+        except Exception as e:
+            return {'Error':f'{e.message}'}
+
+def signinsupa(email:str,password:str):
+    
+    try:
+        result = supabase_client.auth.sign_in_with_password(credentials={'email':email,'password':password})
+        return result
+    
+    except AuthApiError as e:
+        return e
+    except Exception as e:
+        return {'Error':f'{e.message}'}
