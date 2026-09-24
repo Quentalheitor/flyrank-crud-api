@@ -15,7 +15,6 @@ supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 
-
 class Task(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
@@ -122,6 +121,15 @@ def signinsupa(email:str,password:str):
     except Exception as e:
         return {'Error':str(e)}
 
+def logoutsupa():
+    try:
+        result = supabase_client.auth.sign_out()
+        return result
+    except AuthApiError as e:
+        return e
+    except Exception as e:
+        return {'Error':str(e)}
+
 def verifytkn(token:str):
     try:
         result = supabase_client.auth.get_user(token)
@@ -131,4 +139,4 @@ def verifytkn(token:str):
         return e
     except Exception as e:
         return {'Error':str(e)}
-    
+

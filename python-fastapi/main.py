@@ -1,11 +1,37 @@
-from fastapi import FastAPI, HTTPException, status, Response, Header
+from fastapi import FastAPI, HTTPException, status, Response, Header,Depends
 from contextlib import asynccontextmanager
 import uvicorn
 import db
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from typing import Optional
 
+security = HTTPBearer(auto_error=False)
 
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+):
+  if not credentials or not credentials.credentials:
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"error": "Access token required"},
+    )
+
+  token = credentials.credentials
+  result = db.verifytkn(token)
+
+  if isinstance(result, db.AuthApiError):
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"error": "Invalid or expired token"},
+    )
+  elif isinstance(result, Exception):
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={"error": f"Auth error: {str(result)}"},
+    )
+
+  return result
 
 
 
@@ -16,6 +42,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
 
 @app.get("/")
 def hero_route():
@@ -43,20 +71,21 @@ async def get_task_by_id(id: int):
 def info_status_msg():
     return JSONResponse(status_code=status.HTTP_200_OK, content={ "message": "Welcome stranger! This info is public." })
     
-@app.get("/protected/profile")
-async def protected_profile(authorization: Optional[str] = Header(None)):
-    if not authorization or len(authorization.split(" ")) != 2 or authorization.split(" ")[0] != "Bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={ "error": "Access token required" })
-    else:
-        token = authorization.split(" ")[1]
-        result = db.verifytkn(token)
-        print(result)
-        if isinstance(result,db.AuthApiError):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={"error": "Invalid or expired token"})
-        elif isinstance(result,Exception):
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=result)
-        else:
-            return JSONResponse(status_code=200,content={"id":result.id,"email":result.email,"account created data":result.user_metadata})
+@app.get("/protected/profile", status_code=status.HTTP_200_OK)
+async def protected_profile(user=Depends(get_current_user)):
+  return {
+      "id": user.id,
+      "email": user.email,
+      "account_created_at": str(user.created_at),
+  }
+
+@app.get("/protected/dashboard")
+async def dashboard(user=Depends(get_current_user)):
+    return {
+      "id": user.id,
+      "email": user.email,
+      "account_created_at": str(user.created_at),
+  }
     
 @app.post("/auth/signup",status_code=status.HTTP_201_CREATED)
 async def signup(body: dict):
@@ -78,6 +107,16 @@ async def signin(email:str,password:str):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={"Erro":result.message})
         else:
             return {"Access token":result.session.access_token,"Refresh token":result.session.refresh_token}
+
+@app.post("/auth/logout",status_code=status.HTTP_204_NO_CONTENT)
+async def logout(user=Depends(get_current_user)):
+    result = db.logoutsupa()
+    if isinstance(result,db.AuthApiError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={'Error':result.message})
+    elif isinstance(result,dict) and result['Error']:
+        return result
+    else:
+        return
 
 
             
