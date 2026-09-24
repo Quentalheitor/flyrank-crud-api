@@ -1,11 +1,166 @@
-# FlyRank Backend Track — Task CRUD API
+# FlyRank Backend Track — Task CRUD API + Auth
 
-A RESTful CRUD API built with Python, FastAPI, SQLModel, and PostgreSQL. The application manages task lifecycles with strict HTTP status handling, input validation, and database persistence.
+A RESTful API built with Python and FastAPI. The project traces the evolution of backend storage and security across four assignments:
 
-The project traces the evolution of backend storage across three distinct phases:
 1. **Week 2 (A1):** Volatile in-memory data structures.
 2. **Week 3 (A2):** Embedded disk persistence via SQLite.
 3. **Week 3 (A3):** Production-grade containerized PostgreSQL stack orchestrated with Docker Compose.
+4. **Week 3 (A4):** Secure authentication with Supabase Auth — sign up, log in, log out, JWT verification, and protected routes.
+
+---
+
+## Week 3 — Assignment A4: Auth · Login & Protect
+
+### What This Is
+
+A secure API layer built on top of FastAPI and Supabase Auth. Instead of writing any cryptography or password hashing, the app delegates identity management to Supabase (the Identity Provider), which stores accounts, hashes passwords, and signs JSON Web Tokens. The API's job is to receive a token, verify it, and open or refuse the door.
+
+The trust triangle in 60 seconds:
+
+| Step | Who does it | What happens |
+| :--- | :--- | :--- |
+| 1. Sign up / Log in | Client → Supabase | Client sends email + password to Supabase |
+| 2. The token | Supabase → Client | Supabase checks credentials and returns a JWT (access token) |
+| 3. The request | Client → your server | Client calls the API attaching the JWT in an `Authorization` header |
+| 4. Verification | Your server → Supabase | Server asks Supabase "is this token real?" — if yes, the protected door opens |
+
+---
+
+### Quick Start — A4 Auth API
+
+#### Environment Setup
+
+```bash
+# 1. Clone and enter the project
+git clone https://github.com/Quentalheitor/flyrank-crud-api.git
+cd flyrank-crud-api/python-fastapi
+
+# 2. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Configure environment variables
+cp .env.example .env
+# Then fill in your Supabase Project URL and anon key
+```
+
+#### Required Variables (`.env.example`)
+
+| Variable | Description | Example |
+| :--- | :--- | :--- |
+| `SUPABASE_URL` | Your Supabase project URL | `https://xxxx.supabase.co` |
+| `SUPABASE_KEY` | Your Supabase anon (public) key | `eyJ...` |
+| `PORT` | Port for the server | `8000` |
+
+> **Security note:** Never commit `.env` — it is git-ignored. Only `.env.example` with placeholder values is committed. Your Supabase `anon` key is safe to use from your app. Never use the `service_role` key here — it bypasses all security.
+
+#### Run the Server
+
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+- **API Base URL:** `http://localhost:8000`
+- **Interactive Docs (Swagger UI):** `http://localhost:8000/docs`
+
+---
+
+### API Endpoints — A4
+
+| Method | Endpoint | Description | Auth Required | Success Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/auth/signup` | Create a new user account | ❌ None | `201 Created` |
+| `POST` | `/auth/login` | Authenticate and return a JWT | ❌ None | `200 OK` |
+| `POST` | `/auth/logout` | End the user's session | ✅ Bearer token | `204 No Content` |
+| `GET` | `/protected/profile` | Read private profile data (id, email, created date) | ✅ Bearer token | `200 OK` |
+| `GET` | `/public/info` | Read public, open data | ❌ None | `200 OK` |
+
+#### Status Code Reference
+
+| Code | Meaning | When |
+| :--- | :--- | :--- |
+| `201 Created` | User account created | `POST /auth/signup` success |
+| `200 OK` | Request succeeded | Login, public/protected reads |
+| `204 No Content` | Logout succeeded | `POST /auth/logout` success |
+| `400 Bad Request` | Missing email or password | Signup/login with empty fields |
+| `401 Unauthorized` | Missing, malformed, expired, or invalid token | Any protected route without a valid JWT |
+
+---
+
+### Live curl Verification — Full Auth Flow
+
+#### 1 — Sign Up
+
+```bash
+curl -i -X POST http://localhost:8000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+Expected: `HTTP 201 Created` with the user object.
+
+#### 2 — Log In
+
+```bash
+curl -i -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+Expected: `HTTP 200 OK` with `access_token` and `refresh_token`.
+
+#### 3 — Access a Protected Route
+
+```bash
+curl -i http://localhost:8000/protected/profile \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>"
+```
+
+Expected: `HTTP 200 OK` with `id`, `email`, and `account_created_at`.
+
+#### 4 — Reject a Tampered Token
+
+Change one character in the token and re-run:
+
+```bash
+curl -i http://localhost:8000/protected/profile \
+  -H "Authorization: Bearer <TAMPERED_TOKEN>"
+```
+
+Expected: `HTTP 401 Unauthorized` — `{"error": "Invalid or expired token"}`.
+
+#### 5 — Access the Public Route (No Token Needed)
+
+```bash
+curl -i http://localhost:8000/public/info
+```
+
+Expected: `HTTP 200 OK` — `{"message": "Welcome stranger! This info is public."}`.
+
+---
+
+### Stage 5 — Swagger UI with Bearer Auth
+
+FastAPI automatically generates interactive Swagger docs at `/docs`. The `HTTPBearer` security scheme is configured so that a padlock icon appears next to every protected route. Click **Authorize**, paste the JWT from your login response, and use **Try it out** on `GET /protected/profile` without writing a single curl command.
+
+![Swagger UI — Protected Profile with Bearer Auth](python-fastapi/Screenshots/Step5_w2_A4_sc.png)
+
+---
+
+### Architecture Notes
+
+**One guard, standing at every locked door.** Token verification is extracted into a single reusable FastAPI dependency (`Depends(...)`). No copy-pasting auth logic into each route — missing it on one route would leave an unguarded door.
+
+The dependency:
+1. Extracts the JWT from the `Authorization: Bearer <token>` header.
+2. Calls `supabase.auth.get_user(token)` — a real network call to Supabase, so the answer is trustworthy.
+3. If verified, injects the user into the route handler.
+4. If invalid or missing, immediately returns `401` and stops the request.
+
+**Why Supabase?** Rolling your own auth (cryptography, password hashing, token signing) is how security breaches happen. Supabase handles all of that; this API only handles the part that matters for a backend developer: receiving a token, verifying it, and opening or refusing the door.
 
 ---
 
@@ -55,7 +210,7 @@ cp python-fastapi/.env.example python-fastapi/.env
 
 ---
 
-## API Endpoints
+## API Endpoints — Task CRUD (A1 / A2 / A3)
 
 The API maintains an identical HTTP contract across all storage migrations:
 
@@ -118,10 +273,11 @@ flyrank-crud-api/
 │   ├── .dockerignore               # Build context ignore rules
 │   ├── .env.example                # Sanitized credentials template
 │   ├── Dockerfile                  # API container image recipe
-│   ├── Screenshots/                # Stage checkpoints & database verifications
+│   ├── screenshots/                # Stage checkpoints & database verifications
 │   │   ├── Step_4_A2_sc.png
 │   │   ├── Step_5_sc.png
-│   │   └── Step_5_A3_sc.png
+│   │   ├── Step_5_A3_sc.png
+│   │   └── Step5_w2_A4_sc.png     # A4 Swagger UI with bearer auth
 │   ├── db.py                       # Repository module (SQLModel & database engine)
 │   ├── main.py                     # HTTP route controllers & app lifespan
 │   └── requirements.txt            # Pinned dependencies (FastAPI, Psycopg, etc.)
@@ -176,19 +332,15 @@ docker exec -it flyrank-postgres psql -U postgres -d tasks
 SQL prompt output:
 
 ```sql
-psql (18.6 (Debian 18.6-1.pgdg13+2))
-Type "help" for help.
-
-tasks=# SELECT 1;
- ?column?
-----------
-        1
+tasks=# \dt
+        List of relations
+ Schema | Name | Type  |  Owner
+--------+------+-------+----------
+ public | task | table | postgres
 (1 row)
 ```
 
-### Database Verification Proof
-
-Inspection performed directly inside the running database container via `psql`:
+Verified via Compose stack:
 
 ```bash
 docker compose exec db psql -U postgres -d tasks
