@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, status, Response
+from fastapi import FastAPI, HTTPException, status, Response, Header
 from contextlib import asynccontextmanager
 import uvicorn
 import db
 from fastapi.responses import JSONResponse
+from typing import Optional
 
 
 
@@ -38,8 +39,21 @@ async def get_task_by_id(id: int):
     else:
         return result
 
+@app.get("/public/info")
+def info_status_msg():
+    return JSONResponse(status_code=status.HTTP_200_OK, content={ "message": "Welcome stranger! This info is public." })
+    
+@app.get("/protected/profile")
+async def protected_profile(authorization: Optional[str] = Header(None)):
+    print(authorization)
+    if not authorization or len(authorization.split(" ")) != 2 or authorization.split(" ")[0] != "Bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail={ "error": "Access token required" })
+    else:
+        token = authorization.split(" ")[1]
+        return {"message": "Token received", "token": token}
+    
 @app.post("/auth/signup",status_code=status.HTTP_201_CREATED)
-async def signup(body:dict):
+async def signup(body: dict):
     result = db.signupsupa(body=body)
     if result == None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail={'error':"Bad Request"})
