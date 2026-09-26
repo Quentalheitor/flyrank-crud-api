@@ -5,6 +5,19 @@ import os
 import time
 from datetime import datetime,timezone
 import json
+from pydantic import BaseModel,ValidationError
+
+class RecordSchema(BaseModel):
+    id: str
+    title: str
+    product_url: str
+    price_text: str
+    price: int | float
+    availability: str
+    rating: str
+    description: str|None
+    source_pg: str
+    fetched_at: str
 
 CACHE_FOLDER = "cache"
 html_file = os.path.join(CACHE_FOLDER,"page_1.html")
@@ -49,14 +62,15 @@ print(f"Catalogue_pages = 3, discovered = 60, Unique_urls = {len(links_livros)}"
 
 books = []
 CACHE_BOOKS_FOLDER = "cache/Books"
-html_book_file = os.path.join(CACHE_BOOKS_FOLDER,"book_1.html")
-
+CACHE__BOOKS_OUTPUTS =  "cache/output"
+valid_list = []
+error_list = []
 for idx,x in enumerate(links_livros):
     url = x['book']
 
     os.makedirs(CACHE_BOOKS_FOLDER, exist_ok=True)
-    html_file =os.path.join(CACHE_BOOKS_FOLDER,f"book{idx+1}.html")
-    if not os.path.exists(html_file):
+    json_book_file =os.path.join(CACHE_BOOKS_FOLDER,f"book{idx+1}.json")
+    if not os.path.exists(json_book_file):
         print("FETCH")
         
         header= {"user_agent":"FlyRankInternship-A9/1.0 FlyRankInternship-A9/1.0/https://github.com/Quentalheitor/flyrank-crud-api"}
@@ -66,28 +80,68 @@ for idx,x in enumerate(links_livros):
 
         current_page = BeautifulSoup(request.text,"html.parser")
         title = current_page.select_one("div.product_main h1").get_text(strip=True)
-        price_text = current_page.select_one("table.table-striped tr:nth-of-type(4) td").get_text(strip=True)[2:]+" pounds"
+        price_gbp = float(current_page.select_one("table.table-striped tr:nth-of-type(4) td").get_text(strip=True)[2:])
         availability_text = current_page.select_one("table.table-striped tr:nth-of-type(6) td").get_text(strip=True)
         rating_text =  current_page.select_one("div.product_main p.star-rating").get("class",[])[1]
         description = current_page.select_one("article.product_page > p").get_text(strip=True)
         source_page = x['origin_page']
         fetched_at = datetime.now(timezone.utc).isoformat()
-        records = {'title':title,
+        records = {'id':x['book'],
+                   'title':title,
                    'product_url':x['book'],
-                   'price text':price_text,
-                   'availability_text':availability_text,
-                   'rating text':rating_text,
-                   'decription':description,
-                   'source_page':source_page,
+                   'price_text': f"{price_gbp} pounds",
+                   'price':price_gbp,
+                   'availability':availability_text,
+                   'rating':rating_text,
+                   'description':description,
+                   'source_pg':source_page,
                    'fetched_at':fetched_at}
-        with open(html_file, "w", encoding="utf-8") as f:
+        with open(json_book_file, "w", encoding="utf-8") as f:
             json.dump(records,f,indent=4)
-            page_content = str(records)
+            page_content = records
     else:
         print("CACHE HIT")
 
-        with open(html_file, mode="r", encoding="utf-8") as f:
-            page_content = f.read()
+        with open(json_book_file, mode="r", encoding="utf-8") as f:
+            page_content = json.load(f)
+
+    try:
+        os.makedirs(CACHE__BOOKS_OUTPUTS, exist_ok=True)
+        json_book_file =os.path.join(CACHE__BOOKS_OUTPUTS,"books.json")
+        error_json_book_file = os.path.join(CACHE__BOOKS_OUTPUTS,"errors.json")
+        validate_book = RecordSchema.model_validate(page_content)
+
+        if not os.path.exists(json_book_file):
+            for z in valid_list:
+                if z['id'] == x['book']:
+                    print("skipped")
+                    continue
+            with open(json_book_file, "w", encoding="utf-8") as f:
+                valid_list.append(page_content)
+                json.dump(valid_list,f,indent=4)
+        else:
+            with open(json_book_file,"r", encoding="utf-8") as f:
+                file_content = json.load(f)
+                for z in file_content:
+                    if z['id'] == x['book']:
+                        print("skipped")
+                        continue
+                valid_list.append(page_content)
+            with open(json_book_file,"w", encoding="utf-8") as f:
+                json.dump(valid_list,f,indent=4)
+    except ValidationError as e:
+        if not os.path.exists(error_json_book_file):
+            with open(error_json_book_file, "w", encoding="utf-8") as f:
+                error_list.append(page_content)
+                json.dump(error_list,f,indent=4)
+        else:
+            with open(error_json_book_file,"r", encoding="utf-8") as f:
+                file_content = json.load(f)
+                error_list.append(e.errors())
+            with open(error_json_book_file,"w", encoding="utf-8") as f:
+                json.dump(error_list,f,indent=4)
+
     books.append(page_content)
 
-print(books[0])        
+print(len(valid_list))
+print(len(books))
