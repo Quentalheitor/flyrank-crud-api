@@ -38,7 +38,7 @@ for x in "123":
     if not os.path.exists(html_file):
         print("FETCH")
         
-        header= {"user_agent":"FlyRankInternship-A9/1.0 FlyRankInternship-A9/1.0/https://github.com/Quentalheitor/flyrank-crud-api"}
+        header= {"User-Agent":"FlyRankInternship-A9/1.0 FlyRankInternship-A9/1.0/https://github.com/Quentalheitor/flyrank-crud-api"}
         time.sleep(0.5)
         try:
             request = requests.get(url=url,headers=header,timeout=30)
@@ -98,7 +98,7 @@ for idx,x in enumerate(links_livros):
     if not os.path.exists(json_book_file):
         print("FETCH")
         
-        header= {"user_agent":"FlyRankInternship-A9/1.0 FlyRankInternship-A9/1.0/https://github.com/Quentalheitor/flyrank-crud-api"}
+        header= {"User-Agent":"FlyRankInternship-A9/1.0 FlyRankInternship-A9/1.0/https://github.com/Quentalheitor/flyrank-crud-api"}
         time.sleep(0.5)
         try:
             request = requests.get(url=url,headers=header,timeout=30)

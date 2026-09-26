@@ -90,8 +90,9 @@ A real `run-report.json` from a fully-cached run:
 Books to Scrape renders every title, price, and description directly into the server's HTML response, so a plain HTTP `GET` already returns everything this scraper needs — a real browser (e.g. Playwright) would only add startup and rendering cost with no extra data to show for it.
 
 ## Known Limitation
+ 
+Detail-page cache files are named by discovery position — `cache/Books/book{idx+1}.json` — not by the book's own URL. On a cache hit, the script trusts whatever is saved at that position and never checks it against the URL it's actually about to process. If Books to Scrape ever reorders its catalogue between runs, a cached file could silently be served for the wrong book instead of raising an error. Everything else (user-agent, delay, timeout, failure handling) works as described above.
 
-The user-agent header is built with the key `"user_agent"` instead of the HTTP-standard `"User-Agent"`. The identifying string itself is correct, but because of that key name, `requests` likely never sends it as a header the target site actually recognizes as the User-Agent — so in practice this scraper is less identifiable to the site than it's meant to be. Everything else (delay, timeout, cache, failure handling) works as described above.
 
 ## Ethics Note
 
