@@ -19,6 +19,14 @@ class RecordSchema(BaseModel):
     source_pg: str
     fetched_at: str
 
+start_time = datetime.now()
+fetched = 0
+cached = 0
+valid = 0
+invalid = 0
+page_fail = 0
+
+
 CACHE_FOLDER = "cache"
 html_file = os.path.join(CACHE_FOLDER,"page_1.html")
 url = "https://books.toscrape.com/"
@@ -32,14 +40,31 @@ for x in "123":
         
         header= {"user_agent":"FlyRankInternship-A9/1.0 FlyRankInternship-A9/1.0/https://github.com/Quentalheitor/flyrank-crud-api"}
         time.sleep(0.5)
-        request = requests.get(url=url,headers=header,timeout=30)
-        request.raise_for_status()
-
-        with open(html_file, "w", encoding="utf-8") as f:
-            f.write(request.text)
-            page_content=request.text
+        try:
+            request = requests.get(url=url,headers=header,timeout=30)
+            request.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            status_code = getattr(e.response, "status_code", None)
+            if status_code and status_code in (403, 404):
+                page_fail += 1
+                continue
+            elif isinstance(e, requests.exceptions.Timeout) or (status_code and status_code >= 500):
+                # Wait and retry once
+                time.sleep(1.0)
+                try:
+                    request = requests.get(url=url, headers=header, timeout=30)
+                    request.raise_for_status()
+                except Exception as retry_err:
+                    page_fail += 1
+                    print(f"Retry failed: {retry_err}")
+                    continue
+            else:
+                page_fail += 1
+                continue
+        fetched += 1
     else:
         print("CACHE HIT")
+        cached += 1
 
         with open(html_file, mode="r", encoding="utf-8") as f:
             page_content = f.read()
@@ -62,7 +87,7 @@ print(f"Catalogue_pages = 3, discovered = 60, Unique_urls = {len(links_livros)}"
 
 books = []
 CACHE_BOOKS_FOLDER = "cache/Books"
-CACHE__BOOKS_OUTPUTS =  "cache/output"
+CACHE_BOOKS_OUTPUTS =  "output"
 valid_list = []
 error_list = []
 for idx,x in enumerate(links_livros):
@@ -75,8 +100,28 @@ for idx,x in enumerate(links_livros):
         
         header= {"user_agent":"FlyRankInternship-A9/1.0 FlyRankInternship-A9/1.0/https://github.com/Quentalheitor/flyrank-crud-api"}
         time.sleep(0.5)
-        request = requests.get(url=url,headers=header,timeout=30)
-        request.raise_for_status()
+        try:
+            request = requests.get(url=url,headers=header,timeout=30)
+            request.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            status_code = getattr(e.response, "status_code", None)
+            if status_code and status_code in (403, 404):
+                page_fail += 1
+                continue
+            elif isinstance(e, requests.exceptions.Timeout) or (status_code and status_code >= 500):
+                # Wait and retry once
+                time.sleep(1.0)
+                try:
+                    request = requests.get(url=url, headers=header, timeout=30)
+                    request.raise_for_status()
+                except Exception as retry_err:
+                    page_fail += 1
+                    print(f"Retry failed: {retry_err}")
+                    continue
+            else:
+                page_fail += 1
+                continue
+        fetched += 1
 
         current_page = BeautifulSoup(request.text,"html.parser")
         title = current_page.select_one("div.product_main h1").get_text(strip=True)
@@ -101,15 +146,17 @@ for idx,x in enumerate(links_livros):
             page_content = records
     else:
         print("CACHE HIT")
+        cached += 1
 
         with open(json_book_file, mode="r", encoding="utf-8") as f:
             page_content = json.load(f)
 
     try:
-        os.makedirs(CACHE__BOOKS_OUTPUTS, exist_ok=True)
-        json_book_file =os.path.join(CACHE__BOOKS_OUTPUTS,"books.json")
-        error_json_book_file = os.path.join(CACHE__BOOKS_OUTPUTS,"errors.json")
+        os.makedirs(CACHE_BOOKS_OUTPUTS, exist_ok=True)
+        json_book_file =os.path.join(CACHE_BOOKS_OUTPUTS,"books.json")
+        error_json_book_file = os.path.join(CACHE_BOOKS_OUTPUTS,"errors.json")
         validate_book = RecordSchema.model_validate(page_content)
+        valid += 1
 
         if not os.path.exists(json_book_file):
             for z in valid_list:
@@ -130,6 +177,7 @@ for idx,x in enumerate(links_livros):
             with open(json_book_file,"w", encoding="utf-8") as f:
                 json.dump(valid_list,f,indent=4)
     except ValidationError as e:
+        invalid += 1
         if not os.path.exists(error_json_book_file):
             with open(error_json_book_file, "w", encoding="utf-8") as f:
                 error_list.append(page_content)
@@ -143,5 +191,20 @@ for idx,x in enumerate(links_livros):
 
     books.append(page_content)
 
+end_run = datetime.now()
+duration = end_run - start_time
+os.makedirs(CACHE_BOOKS_OUTPUTS,exist_ok=True)
+run_report_path = os.path.join(CACHE_BOOKS_OUTPUTS,"run-report.json")
+run_report = {'start_time': str(start_time),
+              'duration': str(duration),
+              'pages_fetched': fetched,
+              'cache_hits': cached,
+              'valid_records': valid,
+              'invalid_records': invalid,
+              'failed_pages': page_fail}
+
+with open(run_report_path,"w",encoding="utf-8") as f:
+    json.dump(run_report,f,indent=4)
 print(len(valid_list))
 print(len(books))
+print(run_report)
