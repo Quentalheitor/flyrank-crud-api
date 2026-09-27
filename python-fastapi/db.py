@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from supabase import Client,create_client,AuthApiError
 from gotrue.types import AuthResponse,UserResponse
+from llm import schema
 
 load_dotenv(override=True)
 
@@ -140,3 +141,17 @@ def verifytkn(token:str):
     except Exception as e:
         return {'Error':str(e)}
 
+def ticket_triage(ticket:schema.Input):
+    if int(os.getenv("LLM_STUB")) == 1 and isinstance(ticket,schema.Input):
+        output = {
+            "category":"billing",
+            "urgency":"low",
+            "difficulty":"easy",
+            "suggested_team":"finance",
+            "confidence": 0.5,
+            "reason": "test reason text"
+        }
+        return schema.Output.model_validate(output)
+    else:
+        return
+        

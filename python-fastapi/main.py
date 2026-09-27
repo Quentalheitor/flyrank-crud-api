@@ -1,10 +1,13 @@
-from fastapi import FastAPI, HTTPException, status, Response, Header,Depends
+from fastapi import FastAPI, HTTPException, status, Response, Header,Depends,Request
 from contextlib import asynccontextmanager
 import uvicorn
 import db
+from llm import schema
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.encoders import jsonable_encoder
 from typing import Optional
+import json
 
 security = HTTPBearer(auto_error=False)
 
@@ -43,7 +46,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
+@app.exception_handler(schema.ValidationError)
+async def validation_error_handler(request : Request, exc: schema.ValidationError):
+    formatted_errors = []
+    for error in exc.errors():
+        formatted_errors.append({
+            "field": ".".join(str(p) for p in error["loc"] if p != "body"),
+            "message": error["msg"],
+        })
+    return JSONResponse(status_code=400,content={"error":formatted_errors})
 
 @app.get("/")
 def hero_route():
@@ -128,7 +139,15 @@ async def add_task_by_title(title:str):
     else:
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,content={'error':'Empty title'})
         
-        
+@app.post("/triage",status_code=status.HTTP_200_OK)
+async def support_ticket(ticket:schema.Input):
+    result = db.ticket_triage(ticket=ticket)
+    if isinstance(result,schema.Output):
+        return JSONResponse(status_code=status.HTTP_200_OK,content=jsonable_encoder(result))
+    else:
+        raise schema.ValidationError
+
+
 
 @app.put("/tasks/{id}",status_code=200)
 async def update_tsk(update:dict,id:int):
