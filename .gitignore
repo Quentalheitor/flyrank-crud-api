@@ -24,3 +24,9 @@ node-express/yarn-error.log*
 Thumbs.db
 Task.db
 .env
+logs/
+LLM_BASE_URL="http://localhost:11434/v1/"
+LLM_API_KEY="ollama"
+LLM_MODEL="llama3.2:3b"
+LLM_STUB=0
+LLM_ENABLED=true

@@ -1,6 +1,17 @@
-fastapi==0.141.1
-uvicorn==0.53.0
-sqlmodel==0.0.46
-psycopg==3.3.6
-psycopg-binary==3.3.6
-python-dotenv==1.2.3
+# Web Framework & Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Validation & Configuration
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# LLM Provider Client (Week 7 / A17)
+openai>=1.50.0
+
+# Database & ORM (Week 2 / Week 3 CRUD API)
+sqlmodel>=0.0.22
+psycopg-binary>=3.2.0
+
+# Evaluations / HTTP Client (for evals/run_evals.py)
+httpx>=0.28.0
