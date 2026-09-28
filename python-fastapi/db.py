@@ -1,4 +1,5 @@
 import os
+from openai import OpenAI
 from typing import Optional
 from dotenv import load_dotenv
 from sqlmodel import Field, Session, SQLModel, create_engine, select
@@ -153,5 +154,15 @@ def ticket_triage(ticket:schema.Input):
         }
         return schema.Output.model_validate(output)
     else:
-        return
+        with open("prompts/support_ticket_triage-v1.md","r",encoding='utf-8') as f:
+            print(os.path.exists("prompts/support_ticket_triage-v1.md"))
+            file = f.read()
+            client = OpenAI(base_url=os.getenv("LLM_BASE_URL"), api_key=os.getenv("LLM_API_KEY"))
+            user_input = ticket.model_dump_json()
+            res = client.chat.completions.create(
+                model=os.getenv("LLM_MODEL"),
+                messages=[
+                    {"role": "system", "content": file},
+                    {"role": "user", "content": user_input}])
+            return schema.Output.model_validate_json(res.choices[0].message.content)
         
