@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, status, Response, Header,Depends,Req
 from contextlib import asynccontextmanager
 import uvicorn
 import db
+import os
 from llm import schema
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -141,12 +142,12 @@ async def add_task_by_title(title:str):
         
 @app.post("/triage",status_code=status.HTTP_200_OK)
 async def support_ticket(ticket:schema.Input):
-    result = db.ticket_triage(ticket=ticket)
-    if isinstance(result,schema.Output):
-        return JSONResponse(status_code=status.HTTP_200_OK,content=jsonable_encoder(result))
-    else:
-        raise schema.ValidationError
-
+    if isinstance(ticket,schema.Input):
+        result = db.ticket_triage(ticket=ticket)
+        if isinstance(result,schema.Output):
+            return JSONResponse(status_code=status.HTTP_200_OK,content=jsonable_encoder(result))
+        else:
+            return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,content=result[0])
 
 
 @app.put("/tasks/{id}",status_code=200)

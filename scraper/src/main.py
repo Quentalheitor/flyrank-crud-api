@@ -44,12 +44,9 @@ for x in "123":
             request = requests.get(url=url,headers=header,timeout=30)
             request.raise_for_status()
         except requests.exceptions.RequestException as e:
+            page_fail+=1
             status_code = getattr(e.response, "status_code", None)
-            if status_code and status_code in (403, 404):
-                page_fail += 1
-                continue
-            elif isinstance(e, requests.exceptions.Timeout) or (status_code and status_code >= 500):
-                # Wait and retry once
+            if isinstance(e, requests.exceptions.Timeout) or (status_code and status_code >= 500):
                 time.sleep(1.0)
                 try:
                     request = requests.get(url=url, headers=header, timeout=30)
@@ -59,7 +56,6 @@ for x in "123":
                     print(f"Retry failed: {retry_err}")
                     continue
             else:
-                page_fail += 1
                 continue
         fetched += 1
     else:
@@ -104,12 +100,9 @@ for idx,x in enumerate(links_livros):
             request = requests.get(url=url,headers=header,timeout=30)
             request.raise_for_status()
         except requests.exceptions.RequestException as e:
+            page_fail += 1
             status_code = getattr(e.response, "status_code", None)
-            if status_code and status_code in (403, 404):
-                page_fail += 1
-                continue
-            elif isinstance(e, requests.exceptions.Timeout) or (status_code and status_code >= 500):
-                # Wait and retry once
+            if isinstance(e, requests.exceptions.Timeout) or (status_code and status_code >= 500):
                 time.sleep(1.0)
                 try:
                     request = requests.get(url=url, headers=header, timeout=30)
@@ -119,7 +112,6 @@ for idx,x in enumerate(links_livros):
                     print(f"Retry failed: {retry_err}")
                     continue
             else:
-                page_fail += 1
                 continue
         fetched += 1
 
