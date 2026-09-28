@@ -160,7 +160,7 @@ def ticket_triage(ticket:schema.Input):
             client = OpenAI(base_url=os.getenv("LLM_BASE_URL"), api_key=os.getenv("LLM_API_KEY"))
             user_input = ticket.model_dump_json()
             res = client.chat.completions.create(
-                model=os.getenv("LLM_MODEL"),
+                model=os.getenv("LLM_MODEL"),temperature=0.2,
                 messages=[
                     {"role": "system", "content": file},
                     {"role": "user", "content": user_input}])
