@@ -10,7 +10,7 @@ from supabase import Client,create_client,AuthApiError
 from gotrue.types import AuthResponse,UserResponse
 from llm import schema
 import json
-
+import random
 load_dotenv(override=True)
 
 postgres_url = os.getenv("DATABASE_URL")
@@ -154,11 +154,78 @@ def _extract_json(raw_text: str) -> str:
         return cleaned[start_idx : end_idx + 1]
     return cleaned
 
+def _call_llm_with_retry(client: OpenAI, messages: list, is_repair: bool = False):
+    max_attempts = 3
+    attempt = 0
+
+    while attempt < max_attempts:
+        try:
+            start_time = time.perf_counter()
+            res = client.chat.completions.create(
+                model=os.getenv("LLM_MODEL"),
+                temperature=0.2,
+                messages=messages,
+            )
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+            log_entry = {
+                "Model": res.model,
+                "Input tokens": res.usage.prompt_tokens,
+                "Output tokens": res.usage.completion_tokens,
+                "Duration ms": duration_ms,
+                "Repaired": is_repair,
+                "Prompt version": "support_ticket_triage-v1"
+            }
+            print(json.dumps(log_entry))
+
+            raw_output = res.choices[0].message.content or ""
+            return _extract_json(raw_output), None
+
+        except (AuthenticationError, BadRequestError, PermissionDeniedError) as e:
+            status_code = getattr(e, "status_code", 401) or 401
+            return None, [{
+                "field": f"{type(e).__name__}",
+                "message": e.message,
+                "code": status_code
+            }]
+
+        except (APITimeoutError, RateLimitError, APIStatusError) as e:
+            attempt += 1
+            wait_seconds = None
+
+            if isinstance(e, RateLimitError) and hasattr(e, "response") and e.response:
+                retry_header = e.response.headers.get("retry-after")
+                if retry_header:
+                    try:
+                        wait_seconds = float(retry_header)
+                    except ValueError:
+                        try:
+                            target_date = email.utils.parsedate_to_datetime(retry_header)
+                            wait_seconds = max(0.0, (target_date - datetime.now(timezone.utc)).total_seconds())
+                        except Exception:
+                            wait_seconds = None
+
+            if attempt >= max_attempts:
+                if isinstance(e, APITimeoutError):
+                    return None, [{"field": "Timeout error", "message": "Gateway Timeout: upstream LLM timed out"}]
+                return None, [{
+                    "field": f"{type(e).__name__}",
+                    "message": str(e),
+                    "code": getattr(e, "status_code", 500) or 500
+                }]
+
+            if wait_seconds is None:
+                jitter = random.uniform(0.1, 0.5)
+                wait_seconds = (2 ** attempt) + jitter
+
+            time.sleep(wait_seconds)
+
 
 def ticket_triage(ticket: schema.Input):
     schema.Input.model_validate(ticket)
+
     if os.getenv("LLM_ENABLED", "true").lower() in ("false", "0"):
-         return "LLM disabled"
+        return "LLM disabled"
     elif os.getenv("LLM_STUB", "0") == "1":
         output = {
             "category": "billing",
@@ -169,174 +236,88 @@ def ticket_triage(ticket: schema.Input):
             "reason": "Test stub response satisfying schema.",
         }
         return schema.Output.model_validate(output)
+
     prompt_path = os.path.join("prompts", "support_ticket_triage-v1.md")
     with open(prompt_path, "r", encoding="utf-8") as f:
         system_prompt = f.read()
-    x = 0
-    while x >= 0:
-        try:
-            user_input = ticket.model_dump_json()
-            client = OpenAI(
-                base_url=os.getenv("LLM_BASE_URL"),
-                api_key=os.getenv("LLM_API_KEY"),
-                timeout=30)
-            res1 = client.chat.completions.create(
-                model=os.getenv("LLM_MODEL"),
-                temperature=0.2,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_input},
-                ],
-            )
-            model = res1.model
-            input_tokens = res1.usage.prompt_tokens
-            output_tokens = res1.usage.completion_tokens
-            prompt_version = "version 1"
-            print({"Model": model,"Input tokens":input_tokens,"Output tokens":output_tokens,"Prompt version":prompt_version})
 
-            raw_output_1 = res1.choices[0].message.content or ""
-            clean_json_1 = _extract_json(raw_output_1)
-            x = -1  
+    client = OpenAI(
+        base_url=os.getenv("LLM_BASE_URL"),
+        api_key=os.getenv("LLM_API_KEY"),
+        timeout=30.0,
+        max_retries=0
+    )
+    user_input = ticket.model_dump_json()
 
-        except (AuthenticationError, BadRequestError, PermissionDeniedError) as e:
-            status_code = getattr(e, "status_code", 401) or 401
-            formatted_errors = [{
-                "field": f"{type(e).__name__}",
-                "message": e.message,
-                "code": status_code
-            }]
-            return formatted_errors
-
-        except (APITimeoutError, RateLimitError, APIStatusError) as e:
-            if isinstance(e, RateLimitError):
-                wait_seconds = None
-                if hasattr(e, "response") and e.response:
-                    retry_header = e.response.headers.get("retry-after")
-                    if retry_header:
-                        try:
-                            wait_seconds = float(retry_header)
-                        except ValueError:
-                            try:
-                                target_date = email.utils.parsedate_to_datetime(retry_header)
-                                wait_seconds = max(0.0, (target_date - datetime.now(timezone.utc)).total_seconds())
-                            except Exception:
-                                wait_seconds = None
-
-                x += 1
-                time.sleep(wait_seconds if wait_seconds is not None else (0.5**x))
-                continue
-
-            else:
-                x += 1
-                time.sleep(0.5**x)
-                continue
+    clean_json_1, err1 = _call_llm_with_retry(
+        client=client,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input},
+        ],
+        is_repair=False
+    )
+    if err1:
+        return err1
 
     try:
         return schema.Output.model_validate_json(clean_json_1)
-
-    except (schema.ValidationError,TimeoutError, json.JSONDecodeError) as e1:
+    except (schema.ValidationError, json.JSONDecodeError, Exception) as e1:
         if isinstance(e1, schema.ValidationError):
             formatted_errors = [
                 {
-                    "field": ".".join(
-                        str(p) for p in err["loc"] if p != "body"
-                    ),
+                    "field": ".".join(str(p) for p in err["loc"] if p != "body"),
                     "message": err["msg"],
                 }
                 for err in e1.errors()
             ]
-        elif isinstance(e1,TimeoutError):
-            formatted_errors = [{"field":"Timeout error","message": str(e1)}]
         else:
             formatted_errors = [{"field": "json_syntax", "message": str(e1)}]
 
         repair_instruction = (
             f"Your previous answer was rejected for the following validation errors:\n"
             f"{json.dumps(formatted_errors, indent=2)}\n\n"
-            f"Previous broken output:\n{raw_output_1}\n\n"
+            f"Previous broken output:\n{clean_json_1}\n\n"
             f"Return ONLY corrected JSON strictly matching the schema."
         )
-    with open(prompt_path, "r", encoding="utf-8") as f:
-        system_prompt = f.read()
-    x = 0
-    while x >= 0:
+
+        clean_json_2, err2 = _call_llm_with_retry(
+            client=client,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": clean_json_1},
+                {"role": "user", "content": repair_instruction},
+            ],
+            is_repair=True
+        )
+        if err2:
+            return err2
+
         try:
-
-            res2 = client.chat.completions.create(
-                model=os.getenv("LLM_MODEL"),
-                temperature=0.2,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_input},
-                    {"role": "assistant", "content": raw_output_1},
-                    {"role": "user", "content": repair_instruction},
-                ],
-            )
-            model = res2.model
-            input_tokens = res2.usage.prompt_tokens
-            output_tokens = res2.usage.prompt.completion_tokens
-            prompt_version = "version 2"
-            print({"Model": model,"Input tokens":input_tokens,"Output tokens":output_tokens,"Prompt version":prompt_version})
-
-            raw_output_2 = res1.choices[0].message.content or ""
-            clean_json_2 = _extract_json(raw_output_2)
-            x = -1  
-
-        except (AuthenticationError, BadRequestError, PermissionDeniedError) as e:
-            formatted_errors = [{"field": f"{type(e).__name__}", "message": e.message,"code":e.code}]
-            return formatted_errors
-
-        except (APITimeoutError, RateLimitError, APIStatusError) as e:
-            if isinstance(e, RateLimitError):
-                wait_seconds = None
-                if hasattr(e, "response") and e.response:
-                    retry_header = e.response.headers.get("retry-after")
-                    if retry_header:
-                        try:
-                            wait_seconds = float(retry_header)
-                        except ValueError:
-                            try:
-                                target_date = email.utils.parsedate_to_datetime(retry_header)
-                                wait_seconds = max(0.0, (target_date - datetime.now(timezone.utc)).total_seconds())
-                            except Exception:
-                                wait_seconds = None
-
-                x += 1
-                time.sleep(wait_seconds if wait_seconds is not None else (0.5**x))
-                continue
-
+            return schema.Output.model_validate_json(clean_json_2)
+        except (schema.ValidationError, json.JSONDecodeError, Exception) as e2:
+            if isinstance(e2, schema.ValidationError):
+                retry_errors = [
+                    {
+                        "field": ".".join(str(p) for p in err["loc"] if p != "body"),
+                        "message": err["msg"],
+                    }
+                    for err in e2.errors()
+                ]
             else:
-                x += 1
-                time.sleep(0.5**x)
-                continue
-    try:
-        return schema.Output.model_validate_json(clean_json_2)
+                retry_errors = [{"field": "json_syntax", "message": str(e2)}]
 
-    except (schema.ValidationError,TimeoutError, json.JSONDecodeError) as e2:
-        if isinstance(e2, schema.ValidationError):
-            retry_errors = [
-                {
-                    "field": ".".join(
-                        str(p) for p in err["loc"] if p != "body"
-                    ),
-                    "message": err["msg"],
-                }
-                for err in e2.errors()
-            ]
-        elif isinstance(e2,TimeoutError):
-            retry_errors = [{"field":"Timeout error","message": str(e2)}]
-        else:
-            retry_errors = [{"field": "json_syntax", "message": str(e2)}]
+            quarantine_entry = {
+                "prompt_version": "support_ticket_triage-v1",
+                "input": user_input,
+                "error": retry_errors,
+                "raw_output": clean_json_2,
+            }
 
-        quarantine_entry = {
-            "prompt_version": "support_ticket_triage-v1",
-            "input": user_input,
-            "error": retry_errors,
-            "raw_output": raw_output_2,
-        }
+            os.makedirs("logs", exist_ok=True)
+            logs_location = os.path.join("logs", "quarantine.jsonl")
+            with open(logs_location, "a", encoding="utf-8") as log_file:
+                log_file.write(json.dumps(quarantine_entry) + "\n")
 
-        os.makedirs("logs", exist_ok=True)
-        logs_location = os.path.join("logs", "quarantine.jsonl")
-        with open(logs_location, "a", encoding="utf-8") as log_file:
-            log_file.write(json.dumps(quarantine_entry) + "\n")
-        return retry_errors
+            return retry_errors

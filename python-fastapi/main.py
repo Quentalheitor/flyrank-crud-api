@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 import db
 import os
+from fastapi.exceptions import RequestValidationError
 from llm import schema
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -47,15 +48,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-@app.exception_handler(schema.ValidationError)
-async def validation_error_handler(request : Request, exc: schema.ValidationError):
+@app.exception_handler(RequestValidationError)
+async def request_validation_error_handler(request: Request, exc: RequestValidationError):
     formatted_errors = []
     for error in exc.errors():
         formatted_errors.append({
             "field": ".".join(str(p) for p in error["loc"] if p != "body"),
             "message": error["msg"],
         })
-    return JSONResponse(status_code=400,content={"error":formatted_errors})
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"error": formatted_errors}
+    )
 
 @app.get("/")
 def hero_route():
@@ -140,21 +144,26 @@ async def add_task_by_title(title:str):
     else:
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST,content={'error':'Empty title'})
         
-@app.post("/triage",status_code=status.HTTP_200_OK)
-async def support_ticket(ticket:schema.Input):
-    if isinstance(ticket,schema.Input):
+@app.post("/triage", status_code=status.HTTP_200_OK)
+async def support_ticket(ticket: schema.Input):
+    if isinstance(ticket, schema.Input):
         result = db.ticket_triage(ticket=ticket)
         if result == "LLM disabled":
-            return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,content=jsonable_encoder({"message": "Service unavailable at the moment"}))
-        elif isinstance(result,schema.Output):
-            return JSONResponse(status_code=status.HTTP_200_OK,content=jsonable_encoder(result))
-        elif result[0]['field'] == 'Timeout error':
-            return JSONResponse(status_code=status.HTTP_504_GATEWAY_TIMEOUT,content=jsonable_encoder(result[0]))
-        elif result[0]['field'] == 'json_syntax':
-            return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,content=jsonable_encoder(result[0]))
-        else:
-            http_status = result[0].get('code') or status.HTTP_500_INTERNAL_SERVER_ERROR
-            return JSONResponse(status_code=http_status, content=jsonable_encoder(result[0]))
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=jsonable_encoder({"message": "Service unavailable at the moment"})
+            )
+        elif isinstance(result, schema.Output):
+            return JSONResponse(status_code=status.HTTP_200_OK, content=jsonable_encoder(result))
+        elif isinstance(result, list) and len(result) > 0:
+            first_err = result[0]
+            if first_err.get("field") == "Timeout error":
+                return JSONResponse(status_code=status.HTTP_504_GATEWAY_TIMEOUT, content=jsonable_encoder(first_err))
+            elif "code" in first_err:
+                return JSONResponse(status_code=first_err["code"], content=jsonable_encoder(first_err))
+            else:
+                return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=jsonable_encoder(result))
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"error": "Internal error"})
 
 @app.put("/tasks/{id}",status_code=200)
 async def update_tsk(update:dict,id:int):

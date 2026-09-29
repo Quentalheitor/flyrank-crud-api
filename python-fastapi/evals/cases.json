@@ -1,0 +1,114 @@
+[
+  {
+    "input": {
+      "id": "eval-001",
+      "content": "Our credit card was billed twice for the annual Enterprise license on September 15th. Please refund the duplicate invoice.",
+      "received_at": "2026-09-28T10:15:00Z"
+    },
+    "expected": {
+      "category": "billing",
+      "urgency": "high",
+      "difficulty": "easy",
+      "suggested_team": "finance"
+    },
+    "case_type": "standard_billing"
+  },
+  {
+    "input": {
+      "id": "eval-002",
+      "content": "Every time a user clicks 'Download PDF Summary' on Chrome, the browser tab hangs and throws a 500 Internal Server Error.",
+      "received_at": "2026-09-28T10:20:00Z"
+    },
+    "expected": {
+      "category": "bug",
+      "urgency": "high",
+      "difficulty": "medium",
+      "suggested_team": "engineering"
+    },
+    "case_type": "standard_bug"
+  },
+  {
+    "input": {
+      "id": "eval-003",
+      "content": "Can we get support for OAuth 2.0 / Okta single sign-on for our team accounts? It would make login much smoother.",
+      "received_at": "2026-09-28T10:25:00Z"
+    },
+    "expected": {
+      "category": "feature",
+      "urgency": "low",
+      "difficulty": "medium",
+      "suggested_team": "product"
+    },
+    "case_type": "standard_feature"
+  },
+  {
+    "input": {
+      "id": "eval-004",
+      "content": "We need to update our company VAT number and change the default billing email address before next month's statement.",
+      "received_at": "2026-09-28T10:30:00Z"
+    },
+    "expected": {
+      "category": "billing",
+      "urgency": "normal",
+      "difficulty": "easy",
+      "suggested_team": "finance"
+    },
+    "case_type": "account_billing"
+  },
+  {
+    "input": {
+      "id": "eval-005",
+      "content": "The webhook deliveries are dropping connection timeouts with code ECONNRESET on our production receiver endpoint.",
+      "received_at": "2026-09-28T10:35:00Z"
+    },
+    "expected": {
+      "category": "bug",
+      "urgency": "high",
+      "difficulty": "hard",
+      "suggested_team": "engineering"
+    },
+    "case_type": "technical_bug"
+  },
+  {
+    "input": {
+      "id": "eval-006",
+      "content": "Would love an option to export our analytics tables directly into Google Sheets or CSV instead of just viewing them on-screen.",
+      "received_at": "2026-09-28T10:40:00Z"
+    },
+    "expected": {
+      "category": "feature",
+      "urgency": "low",
+      "difficulty": "easy",
+      "suggested_team": "product"
+    },
+    "case_type": "ux_feature"
+  },
+  {
+    "input": {
+      "id": "eval-007",
+      "content": "Something feels strange with the dashboard colors today and I'm not sure if it was meant to change or if my monitor is bugging out.",
+      "received_at": "2026-09-28T10:45:00Z"
+    },
+    "expected": {
+      "category": "other",
+      "urgency": "normal",
+      "difficulty": "medium",
+      "suggested_team": "support_triage"
+    },
+    "case_type": "ambiguous_ticket"
+  },
+  {
+    "input": {
+      "id": "eval-008",
+      "content": "??? asdf 1234 help pls nothing",
+      "received_at": "2026-09-28T10:50:00Z"
+    },
+    "expected": {
+      "category": "other",
+      "urgency": "normal",
+      "difficulty": "medium",
+      "suggested_team": "support_triage"
+    },
+    "case_type": "unsure_fallback"
+  }
+]
