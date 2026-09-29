@@ -144,11 +144,17 @@ async def add_task_by_title(title:str):
 async def support_ticket(ticket:schema.Input):
     if isinstance(ticket,schema.Input):
         result = db.ticket_triage(ticket=ticket)
-        if isinstance(result,schema.Output):
+        if result == "LLM disabled":
+            return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,content=jsonable_encoder({"message": "Service unavailable at the moment"}))
+        elif isinstance(result,schema.Output):
             return JSONResponse(status_code=status.HTTP_200_OK,content=jsonable_encoder(result))
+        elif result[0]['field'] == 'Timeout error':
+            return JSONResponse(status_code=status.HTTP_504_GATEWAY_TIMEOUT,content=jsonable_encoder(result[0]))
+        elif result[0]['field'] == 'json_syntax':
+            return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,content=jsonable_encoder(result[0]))
         else:
-            return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,content=result[0])
-
+            http_status = result[0].get('code') or status.HTTP_500_INTERNAL_SERVER_ERROR
+            return JSONResponse(status_code=http_status, content=jsonable_encoder(result[0]))
 
 @app.put("/tasks/{id}",status_code=200)
 async def update_tsk(update:dict,id:int):
