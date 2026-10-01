@@ -3,6 +3,10 @@ from contextlib import asynccontextmanager
 import uvicorn
 import db
 import os
+import inngest
+from datetime import timedelta
+from inngest import fast_api
+import logging
 from fastapi.exceptions import RequestValidationError
 from llm import schema
 from fastapi.responses import JSONResponse
@@ -45,8 +49,34 @@ async def lifespan(app: FastAPI):
     db.create_db_and_tables()
     yield
 
+inngest_client = inngest.Inngest(
+    app_id="report-api",
+    logger=logging.getLogger("uvicorn"),
+)
+
+# Create an Inngest function
+@inngest_client.create_function(
+    fn_id="say-hello",
+    # Event that triggers this function
+    trigger=inngest.TriggerEvent(event="test/hello"),
+)
+async def say_hello(ctx: inngest.Context) -> str:
+    ctx.logger.info(ctx.event)
+    await ctx.step.sleep("sleep-5-seconds", timedelta(seconds=5))
+    return "Hello from the background!"
 
 app = FastAPI(lifespan=lifespan)
+
+inngest.fast_api.serve(app, inngest_client, [say_hello])
+
+@app.post("/test-hello")
+async def trigger_hello():
+    ids = await inngest_client.send(
+        inngest.Event(name="test/hello", data={"msg": "Hello!"})
+    )
+    return ids
+
+
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_error_handler(request: Request, exc: RequestValidationError):
@@ -183,6 +213,8 @@ async def delete_route(id:int):
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={'error':'Task not found'})
     elif result == True:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
