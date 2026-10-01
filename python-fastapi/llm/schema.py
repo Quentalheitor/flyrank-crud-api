@@ -36,4 +36,9 @@ class Output(BaseModel):
     confidence : float = Field(ge=0.0,le=1.0)
     reason : str = Field(...,max_length=200)
 
+class Report(BaseModel):
+    id : str
+    topic : str
+    status : str
+
 

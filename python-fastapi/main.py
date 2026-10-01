@@ -2,10 +2,9 @@ from fastapi import FastAPI, HTTPException, status, Response, Header,Depends,Req
 from contextlib import asynccontextmanager
 import uvicorn
 import db
-import os
 import inngest
-from datetime import timedelta
 from inngest import fast_api
+from datetime import timedelta
 import logging
 from fastapi.exceptions import RequestValidationError
 from llm import schema
@@ -13,7 +12,6 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.encoders import jsonable_encoder
 from typing import Optional
-import json
 
 security = HTTPBearer(auto_error=False)
 
@@ -42,7 +40,7 @@ async def get_current_user(
 
   return result
 
-
+reports = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,12 +60,27 @@ inngest_client = inngest.Inngest(
 )
 async def say_hello(ctx: inngest.Context) -> str:
     ctx.logger.info(ctx.event)
-    await ctx.step.sleep("sleep-5-seconds", timedelta(seconds=5))
+    await ctx.step.sleep("sleep-5-seconds", timedelta(seconds=8))
     return "Hello from the background!"
+
+@inngest_client.create_function(
+    fn_id="make-report",
+    trigger=inngest.TriggerEvent(event="report/requests")
+)
+async def make_report(ctx: inngest.Context):
+    ctx.logger.info(ctx.event)
+    await ctx.step.sleep("sleep-8-seconds",timedelta(seconds=5))
+    def compute_report():
+        body = reports[ctx.event.data['id']]
+        body.update({"status":"done"})
+        reports[body['id']]['status'] = 'done'
+        reports[body['id']]['result'] = f"Report data for {body['topic']}"
+    await ctx.step.run("process output",compute_report)
+    return "Saved report processed and saved in reports"
 
 app = FastAPI(lifespan=lifespan)
 
-inngest.fast_api.serve(app, inngest_client, [say_hello])
+inngest.fast_api.serve(app, inngest_client, [say_hello,make_report])
 
 @app.post("/test-hello")
 async def trigger_hello():
@@ -75,6 +88,25 @@ async def trigger_hello():
         inngest.Event(name="test/hello", data={"msg": "Hello!"})
     )
     return ids
+
+@app.post("/reports")
+async def report_body(body:dict):
+    result = db.clean_report(body=body)
+    ids = await inngest_client.send(
+        inngest.Event(name="report/requests", data={"id": result.id,"topic":result.topic,"status":result.status}))
+    if isinstance(ids,list):
+        report = {"id": result.id,"topic":result.topic,"status":result.status}
+        reports[result.id] = report
+        print(reports)
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,content={'id':result.id,'status':'pending'})
+    else:
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@app.get("/reports/{report_id}")
+async def find_report(report_id:str):
+    if report_id in reports:
+        return reports[report_id]
+    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={"message":"Could not find report with matching id"})
 
 
 

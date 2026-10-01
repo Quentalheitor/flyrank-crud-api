@@ -1,5 +1,6 @@
 import os
 import time
+import json
 from openai import OpenAI,BadRequestError,AuthenticationError,PermissionDeniedError,APIStatusError,APITimeoutError,RateLimitError
 from typing import Optional
 import email.utils
@@ -11,6 +12,7 @@ from gotrue.types import AuthResponse,UserResponse
 from llm import schema
 import json
 import random
+import uuid
 load_dotenv(override=True)
 
 postgres_url = os.getenv("DATABASE_URL")
@@ -321,3 +323,9 @@ def ticket_triage(ticket: schema.Input):
                 log_file.write(json.dumps(quarantine_entry) + "\n")
 
             return retry_errors
+
+def clean_report(body:dict):
+    if 'topic' in body:
+        body_id = uuid.uuid4()
+        body.update({'id':str(body_id),'status':'pending'})
+        return schema.Report.model_validate(body)
