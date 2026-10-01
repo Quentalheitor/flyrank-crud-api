@@ -67,13 +67,7 @@ def hero_route():
 
 @app.get("/health")
 def status_route():
-    return db.hstatus()
-
-
-@app.get("/tasks", response_model=list[db.Task])
-async def task_listing():
-    return db.tasklist()
-
+    return JSONResponse(status_code=status.HTTP_200_OK,content=db.hstatus)
 
 @app.get("/tasks/{id}")
 async def get_task_by_id(id: int):
