@@ -65,12 +65,15 @@ async def say_hello(ctx: inngest.Context) -> str:
 
 @inngest_client.create_function(
     fn_id="make-report",
-    trigger=inngest.TriggerEvent(event="report/requests")
+    trigger=inngest.TriggerEvent(event="report/requests"),
+    retries=2
 )
 async def make_report(ctx: inngest.Context):
     ctx.logger.info(ctx.event)
     await ctx.step.sleep("sleep-8-seconds",timedelta(seconds=5))
     def compute_report():
+        if reports[ctx.event.data['id']]['topic'] == 'fail':
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail={"message":"Simulated crash keyword"})
         body = reports[ctx.event.data['id']]
         body.update({"status":"done"})
         reports[body['id']]['status'] = 'done'
@@ -92,15 +95,17 @@ async def trigger_hello():
 @app.post("/reports")
 async def report_body(body:dict):
     result = db.clean_report(body=body)
-    ids = await inngest_client.send(
-        inngest.Event(name="report/requests", data={"id": result.id,"topic":result.topic,"status":result.status}))
-    if isinstance(ids,list):
-        report = {"id": result.id,"topic":result.topic,"status":result.status}
-        reports[result.id] = report
-        print(reports)
-        return JSONResponse(status_code=status.HTTP_202_ACCEPTED,content={'id':result.id,'status':'pending'})
-    else:
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    if result:
+        ids = await inngest_client.send(
+            inngest.Event(name="report/requests", data={"id": result.id,"topic":result.topic,"status":result.status}))
+        if isinstance(ids,list):
+            report = {"id": result.id,"topic":result.topic,"status":result.status}
+            reports[result.id] = report
+            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,content={'id':result.id,'status':'pending'})
+        else:
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    else: 
+        return Response(status_code=status.HTTP_400_BAD_REQUEST)
 
 @app.get("/reports/{report_id}")
 async def find_report(report_id:str):

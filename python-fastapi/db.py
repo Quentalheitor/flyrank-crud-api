@@ -325,7 +325,9 @@ def ticket_triage(ticket: schema.Input):
             return retry_errors
 
 def clean_report(body:dict):
-    if 'topic' in body:
+    if 'topic' in body and body['topic'].strip() != "":
         body_id = uuid.uuid4()
         body.update({'id':str(body_id),'status':'pending'})
         return schema.Report.model_validate(body)
+    else:
+        return 
