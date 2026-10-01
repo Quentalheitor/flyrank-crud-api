@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -18,6 +18,7 @@ import "@xyflow/react/dist/style.css";
 
 import DecisionNode, { type DecisionNodeType } from "@/components/flow/decision-node";
 import DecisionEdge, { type DecisionEdgeType } from "@/components/flow/decision-edge";
+import ExecutionLogsSheet from "@/components/flow/execution-logs-sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -28,7 +29,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, RotateCcw, Play, Loader2 } from "lucide-react";
+import {
+  Plus,
+  RotateCcw,
+  Play,
+  Loader2,
+  Download,
+  Upload,
+  FileText,
+} from "lucide-react";
 import type { ExecutionState } from "@/lib/execution-store";
 
 const STORAGE_KEY = "ai-workflow-graph-v1";
@@ -103,15 +112,19 @@ export default function WorkflowPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<DecisionEdgeType>(initialEdges);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Run modal state
+  // Run modal & status state
   const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
+  const [isLogsSheetOpen, setIsLogsSheetOpen] = useState(false);
   const [inputContext, setInputContext] = useState(
     "Customer message: Our entire production database is down and users cannot log in!"
   );
   const [isRunning, setIsRunning] = useState(false);
   const [currentExecution, setCurrentExecution] = useState<ExecutionState | null>(null);
 
-  // Load graph from localStorage
+  // Hidden file input reference for JSON import
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Load from localStorage
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -128,7 +141,7 @@ export default function WorkflowPage() {
     setIsLoaded(true);
   }, [setNodes, setEdges]);
 
-  // Persist graph to localStorage
+  // Persist to localStorage
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
@@ -155,6 +168,40 @@ export default function WorkflowPage() {
       [maxX, maxY],
     ];
   }, [nodes]);
+
+  /*
+    PHASE 4: ANIMATED ACTIVE EDGES
+    Determines if an edge was traversed during execution.
+    If yes, marks it animated: true with a prominent stroke.
+  */
+  const displayEdges = useMemo(() => {
+    if (!currentExecution || currentExecution.executionPath.length < 2) {
+      return edges;
+    }
+
+    const path = currentExecution.executionPath;
+    const activeEdgePairs = new Set<string>();
+
+    for (let i = 0; i < path.length - 1; i++) {
+      activeEdgePairs.add(`${path[i]}->${path[i + 1]}`);
+    }
+
+    return edges.map((edge) => {
+      const isTraversed = activeEdgePairs.has(`${edge.source}->${edge.target}`);
+      if (isTraversed) {
+        return {
+          ...edge,
+          animated: true,
+          style: {
+            ...edge.style,
+            strokeWidth: 3.5,
+            filter: "drop-shadow(0 0 6px rgba(16, 185, 129, 0.4))",
+          },
+        };
+      }
+      return edge;
+    });
+  }, [edges, currentExecution]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -194,13 +241,55 @@ export default function WorkflowPage() {
     setCurrentExecution(null);
   }, [setNodes, setEdges]);
 
-  // Execute workflow & poll status
+  /*
+    PHASE 4: JSON EXPORT
+  */
+  const handleExportJSON = () => {
+    const dataStr = JSON.stringify({ nodes, edges }, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ai-workflow-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /*
+    PHASE 4: JSON IMPORT
+  */
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+          setNodes(parsed.nodes);
+          setEdges(parsed.edges);
+          setCurrentExecution(null);
+          alert("Workflow imported successfully!");
+        } else {
+          alert("Invalid workflow file format.");
+        }
+      } catch (err) {
+        alert("Failed to parse JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input so the same file can be uploaded again if needed
+    e.target.value = "";
+  };
+
+  // Execute workflow
   const handleExecuteWorkflow = async () => {
     if (!inputContext.trim()) return;
     setIsRunning(true);
     setIsRunDialogOpen(false);
 
-    // Reset previous run status on canvas nodes
+    // Set nodes to running / clear past results
     setNodes((nds) =>
       nds.map((n) => ({
         ...n,
@@ -228,19 +317,17 @@ export default function WorkflowPage() {
       }
 
       let pollAttempts = 0;
-      const maxAttempts = 30; // 30 * 700ms = 21 seconds maximum timeout
+      const maxAttempts = 30;
 
       const interval = setInterval(async () => {
         pollAttempts++;
 
         try {
           const statusRes = await fetch(`/api/workflow/status?workflowId=${workflowId}`);
-          
           if (!statusRes.ok) {
             if (pollAttempts >= maxAttempts) {
               clearInterval(interval);
               setIsRunning(false);
-              alert("Workflow execution timed out while checking status.");
             }
             return;
           }
@@ -248,7 +335,6 @@ export default function WorkflowPage() {
           const data: ExecutionState = await statusRes.json();
           setCurrentExecution(data);
 
-          // Update nodes with live YES / NO badges
           if (data.stepResults) {
             setNodes((nds) =>
               nds.map((n) => {
@@ -268,8 +354,11 @@ export default function WorkflowPage() {
             );
           }
 
-          // Stop polling once finished or if reached maximum attempts
-          if (data.status === "completed" || data.status === "failed" || pollAttempts >= maxAttempts) {
+          if (
+            data.status === "completed" ||
+            data.status === "failed" ||
+            pollAttempts >= maxAttempts
+          ) {
             clearInterval(interval);
             setIsRunning(false);
           }
@@ -298,10 +387,51 @@ export default function WorkflowPage() {
             }`}
           />
           <h1 className="font-semibold text-sm">AI Workflow Engine</h1>
-          <span className="text-xs text-muted-foreground ml-2">Phase 3: Execution</span>
+          <span className="text-xs text-muted-foreground ml-2">Phase 4: Polish</span>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Hidden File Input for JSON Import */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImportJSON}
+            accept=".json"
+            className="hidden"
+          />
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            className="gap-1.5 text-xs"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import JSON
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportJSON}
+            className="gap-1.5 text-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export JSON
+          </Button>
+
+          {currentExecution && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsLogsSheetOpen(true)}
+              className="gap-1.5 text-xs"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              View Logs
+            </Button>
+          )}
+
           <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5 text-xs">
             <RotateCcw className="w-3.5 h-3.5" />
             Reset Flow
@@ -333,11 +463,11 @@ export default function WorkflowPage() {
         </div>
       </header>
 
-      {/* Main Canvas */}
+      {/* Main Flow Canvas */}
       <main className="flex-1 w-full h-full relative">
         <ReactFlow
           nodes={nodes}
-          edges={edges}
+          edges={displayEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -357,18 +487,20 @@ export default function WorkflowPage() {
             className="!bg-background border rounded-lg overflow-hidden shadow-sm"
           />
 
+          {/* Quick Execution Status Badge */}
           {currentExecution && (
             <Panel
               position="top-right"
-              className="bg-card/95 border p-3 rounded-lg shadow-lg text-xs space-y-2 max-w-xs"
+              className="bg-card/95 border p-3 rounded-lg shadow-lg text-xs space-y-2 max-w-xs cursor-pointer hover:border-primary transition-colors"
+              onClick={() => setIsLogsSheetOpen(true)}
             >
               <div className="font-semibold flex items-center justify-between">
                 <span>Execution Status</span>
                 <span
                   className={`font-mono uppercase text-[10px] px-1.5 py-0.5 rounded ${
                     currentExecution.status === "completed"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-amber-100 text-amber-800"
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
                   }`}
                 >
                   {currentExecution.status}
@@ -379,6 +511,9 @@ export default function WorkflowPage() {
                 <span className="font-mono text-foreground font-medium">
                   {currentExecution.executionPath.join(" → ")}
                 </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground underline pt-0.5">
+                Click to open detailed logs →
               </div>
             </Panel>
           )}
@@ -409,12 +544,19 @@ export default function WorkflowPage() {
             <Button variant="outline" onClick={() => setIsRunDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleExecuteWorkflow} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={handleExecuteWorkflow} className="bg-emerald-600 hover:bg-emerald-700 text-white">
               Run
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Execution Logs Drawer */}
+      <ExecutionLogsSheet
+        open={isLogsSheetOpen}
+        onOpenChange={setIsLogsSheetOpen}
+        execution={currentExecution}
+      />
     </div>
   );
 }

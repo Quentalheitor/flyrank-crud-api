@@ -11,6 +11,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Loader2 } from "lucide-react";
 
 export type DecisionNodeData = {
   title?: string;
@@ -45,13 +46,25 @@ export default function DecisionNode({ id, data }: NodeProps<DecisionNodeType>) 
     [id, setNodes]
   );
 
+  // Dynamic styling based on execution status
+  const getCardBorderClass = () => {
+    switch (data.status) {
+      case "running":
+        return "ring-2 ring-amber-500 shadow-amber-500/20 shadow-lg animate-pulse";
+      case "completed":
+        return "ring-2 ring-primary/80 shadow-md";
+      case "failed":
+        return "ring-2 ring-destructive shadow-destructive/20 shadow-md";
+      default:
+        return "border-border shadow-md";
+    }
+  };
+
   return (
-    <Card className="w-80 shadow-md border-border bg-card text-card-foreground overflow-visible relative">
-      {/* 
-        TARGET HANDLE (Top)
-        - top: -8px places it halfway through the top border.
-        - cursor-crosshair signals an active connectable port.
-      */}
+    <Card
+      className={`w-80 bg-card text-card-foreground overflow-visible relative transition-all duration-300 ${getCardBorderClass()}`}
+    >
+      {/* Target Handle (Top) */}
       <Handle
         type="target"
         position={Position.Top}
@@ -60,9 +73,14 @@ export default function DecisionNode({ id, data }: NodeProps<DecisionNodeType>) 
       />
 
       <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b">
-        <CardTitle className="text-sm font-semibold tracking-wide">
-          {data.title || "Decision Step"}
-        </CardTitle>
+        <div className="flex items-center gap-2">
+          {data.status === "running" && (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
+          )}
+          <CardTitle className="text-sm font-semibold tracking-wide">
+            {data.title || "Decision Step"}
+          </CardTitle>
+        </div>
 
         {data.lastResult && (
           <Badge
@@ -90,10 +108,7 @@ export default function DecisionNode({ id, data }: NodeProps<DecisionNodeType>) 
         />
       </CardContent>
 
-      {/* 
-        BRANCH LABELS (Footer)
-        Clean two-column layout with no handle elements inside, preventing text collisions.
-      */}
+      {/* YES / NO Footers */}
       <div className="grid grid-cols-2 border-t bg-muted/20 py-2.5 px-4 text-xs font-bold select-none">
         <div className="text-center text-emerald-600 dark:text-emerald-400">
           YES
@@ -103,11 +118,7 @@ export default function DecisionNode({ id, data }: NodeProps<DecisionNodeType>) 
         </div>
       </div>
 
-      {/* 
-        SOURCE HANDLES (Bottom)
-        Positioned explicitly at 25% and 75% along the bottom border.
-        The `before:` pseudo-class gives a 24px invisible click target.
-      */}
+      {/* Bottom Source Handles */}
       <Handle
         id="yes"
         type="source"
