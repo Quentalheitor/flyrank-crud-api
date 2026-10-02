@@ -70,13 +70,13 @@ async def say_hello(ctx: inngest.Context) -> str:
 )
 async def make_report(ctx: inngest.Context):
     ctx.logger.info(ctx.event)
-    await ctx.step.sleep("sleep-8-seconds",timedelta(seconds=5))
+    await ctx.step.sleep("sleep-8-seconds",timedelta(seconds=10))
     def compute_report():
         body = reports[ctx.event.data['id']]
         body.update({"status":"done"})
         reports[body['id']]['status'] = 'done'
         reports[body['id']]['result'] = f"Report data for {body['topic']}"
-        if reports[ctx.event.data['id']]['topic'] == 'failed':
+        if reports[ctx.event.data['id']]['topic'] == 'fail':
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail={"message":"Simulated crash keyword"})
     await ctx.step.run("process output",compute_report)
     return "Saved report processed and saved in reports"
@@ -98,7 +98,7 @@ async def heartbeat(ctx: inngest.Context):
                 pending +=1
             elif x['status'] == "done":
                 done += 1
-            elif x['status'] == "failed":
+            elif x['status'] == "fail":
                 fail += 1
             else:
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=f"Impossible status {x['status']}")
@@ -132,7 +132,7 @@ async def report_body(body:dict):
         if isinstance(ids,list):
             report = {"id": result.id,"topic":result.topic,"status":result.status}
             reports[result.id] = report
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,content={'id':result.id,'status':'pending'})
+            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,content={'id':result.id,'status':result.status})
         else:
             return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     else: 

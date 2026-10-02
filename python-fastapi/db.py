@@ -328,6 +328,8 @@ def clean_report(body:dict):
     if 'topic' in body and body['topic'].strip() != "":
         body_id = uuid.uuid4()
         body.update({'id':str(body_id),'status':'pending'})
+        if body["topic"] == "fail":
+            body["status"] = "fail"
         return schema.Report.model_validate(body)
     else:
         return 
