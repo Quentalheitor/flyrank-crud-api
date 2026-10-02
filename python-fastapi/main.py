@@ -2,10 +2,6 @@ from fastapi import FastAPI, HTTPException, status, Response, Header,Depends,Req
 from contextlib import asynccontextmanager
 import uvicorn
 import db
-import inngest
-from inngest import fast_api
-from datetime import timedelta
-import logging
 from fastapi.exceptions import RequestValidationError
 from llm import schema
 from fastapi.responses import JSONResponse
@@ -40,111 +36,12 @@ async def get_current_user(
 
   return result
 
-reports = {}
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.create_db_and_tables()
     yield
 
-inngest_client = inngest.Inngest(
-    app_id="report-api",
-    logger=logging.getLogger("uvicorn"),
-)
-
-# Create an Inngest function
-@inngest_client.create_function(
-    fn_id="say-hello",
-    # Event that triggers this function
-    trigger=inngest.TriggerEvent(event="test/hello"),
-)
-async def say_hello(ctx: inngest.Context) -> str:
-    ctx.logger.info(ctx.event)
-    await ctx.step.sleep("sleep-5-seconds", timedelta(seconds=8))
-    return "Hello from the background!"
-
-@inngest_client.create_function(
-    fn_id="make-report",
-    trigger=inngest.TriggerEvent(event="report/requests"),
-    retries=2
-)
-async def make_report(ctx: inngest.Context):
-    ctx.logger.info(ctx.event)
-    await ctx.step.sleep("sleep-8-seconds",timedelta(seconds=10))
-    def compute_report():
-        body = reports[ctx.event.data['id']]
-        body.update({"status":"done"})
-        reports[body['id']]['status'] = 'done'
-        reports[body['id']]['result'] = f"Report data for {body['topic']}"
-        if reports[ctx.event.data['id']]['topic'] == 'fail':
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail={"message":"Simulated crash keyword"})
-    await ctx.step.run("process output",compute_report)
-    return "Saved report processed and saved in reports"
-
-
-@inngest_client.create_function(
-    fn_id="heartbeat",
-    trigger=inngest.TriggerCron(cron="* * * * *")
-)
-async def heartbeat(ctx: inngest.Context):
-    ctx.logger.info(ctx.event)
-    def reports_status_summary():
-        print(reports)
-        pending = 0
-        done = 0
-        fail = 0
-        for x in reports.values():
-            if x['status'] == "pending":
-                pending +=1
-            elif x['status'] == "done":
-                done += 1
-            elif x['status'] == "fail":
-                fail += 1
-            else:
-                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=f"Impossible status {x['status']}")
-        summary = f"Total number of reports: {len(reports)}\n Number of pending reports: {pending} \n Number of finished reports {done} \n Number of failed reports {fail}"
-        return summary
-    sum_rep = await ctx.step.run("Reports count and summary",reports_status_summary)
-    return sum_rep
-
-
-
-
-
-
 app = FastAPI(lifespan=lifespan)
-
-inngest.fast_api.serve(app, inngest_client, [say_hello,make_report,heartbeat])
-
-@app.post("/test-hello")
-async def trigger_hello():
-    ids = await inngest_client.send(
-        inngest.Event(name="test/hello", data={"msg": "Hello!"})
-    )
-    return ids
-
-@app.post("/reports")
-async def report_body(body:dict):
-    result = db.clean_report(body=body)
-    if result:
-        ids = await inngest_client.send(
-            inngest.Event(name="report/requests", data={"id": result.id,"topic":result.topic,"status":result.status}))
-        if isinstance(ids,list):
-            report = {"id": result.id,"topic":result.topic,"status":result.status}
-            reports[result.id] = report
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,content={'id':result.id,'status':result.status})
-        else:
-            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    else: 
-        return Response(status_code=status.HTTP_400_BAD_REQUEST)
-
-@app.get("/reports/{report_id}")
-async def find_report(report_id:str):
-    if report_id in reports:
-        return reports[report_id]
-    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={"message":"Could not find report with matching id"})
-
-
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_error_handler(request: Request, exc: RequestValidationError):
@@ -165,7 +62,7 @@ def hero_route():
 
 @app.get("/health")
 def status_route():
-    return JSONResponse(status_code=status.HTTP_200_OK,content=db.hstatus)
+    return JSONResponse(status_code=status.HTTP_200_OK,content=db.hstatus())
 
 @app.get("/tasks/{id}")
 async def get_task_by_id(id: int):
