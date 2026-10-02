@@ -72,18 +72,49 @@ async def make_report(ctx: inngest.Context):
     ctx.logger.info(ctx.event)
     await ctx.step.sleep("sleep-8-seconds",timedelta(seconds=5))
     def compute_report():
-        if reports[ctx.event.data['id']]['topic'] == 'fail':
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail={"message":"Simulated crash keyword"})
         body = reports[ctx.event.data['id']]
         body.update({"status":"done"})
         reports[body['id']]['status'] = 'done'
         reports[body['id']]['result'] = f"Report data for {body['topic']}"
+        if reports[ctx.event.data['id']]['topic'] == 'failed':
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail={"message":"Simulated crash keyword"})
     await ctx.step.run("process output",compute_report)
     return "Saved report processed and saved in reports"
 
+
+@inngest_client.create_function(
+    fn_id="heartbeat",
+    trigger=inngest.TriggerCron(cron="* * * * *")
+)
+async def heartbeat(ctx: inngest.Context):
+    ctx.logger.info(ctx.event)
+    def reports_status_summary():
+        print(reports)
+        pending = 0
+        done = 0
+        fail = 0
+        for x in reports.values():
+            if x['status'] == "pending":
+                pending +=1
+            elif x['status'] == "done":
+                done += 1
+            elif x['status'] == "failed":
+                fail += 1
+            else:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=f"Impossible status {x['status']}")
+        summary = f"Total number of reports: {len(reports)}\n Number of pending reports: {pending} \n Number of finished reports {done} \n Number of failed reports {fail}"
+        return summary
+    sum_rep = await ctx.step.run("Reports count and summary",reports_status_summary)
+    return sum_rep
+
+
+
+
+
+
 app = FastAPI(lifespan=lifespan)
 
-inngest.fast_api.serve(app, inngest_client, [say_hello,make_report])
+inngest.fast_api.serve(app, inngest_client, [say_hello,make_report,heartbeat])
 
 @app.post("/test-hello")
 async def trigger_hello():
